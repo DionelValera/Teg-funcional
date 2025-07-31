@@ -48,10 +48,3 @@ Este documento sirve como un registro central de la visión del proyecto, decisi
 
 * **Estructura Actualizada:** El esquema de la base de datos ha sido modificado para soportar la nueva visión de empresas y roles.
     * **¡IMPORTANTE!** Si no se ha hecho, el archivo `src/db/ingreso.db` debe ser eliminado para que se recree con el esquema más reciente.
-      mainHeader?.classList.remove('-translate-y-full');
-      mainHeader?.classList.add('translate-y-0');
-    }
-
-    lastScrollY = window.scrollY;
-  });
-</script>
