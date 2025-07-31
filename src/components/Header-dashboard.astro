@@ -1,0 +1,186 @@
+---
+// src/components/Header-dashboard.astro
+import '../styles/global.css'; 
+
+// Definimos los props que este componente espera recibir
+interface Props {
+    activeCompanyId: number | null;
+    activeCompanyName: string;
+    userCompanies: any[]; // Lista de todas las empresas del usuario
+}
+
+const { activeCompanyId, activeCompanyName, userCompanies } = Astro.props;
+
+// NOTA: No necesitamos lógica de servidor aquí (initializeDatabase, jsonwebtoken)
+// porque la página padre es la que se encarga de obtener estos datos y pasarlos como props.
+// Este componente solo renderiza la UI y maneja interacciones del cliente.
+---
+
+<header class="fixed top-0 left-0 right-0 bg-white shadow-md py-3 px-6 sm:px-10 flex justify-between items-center z-50 border-b border-gray-200">
+    <!-- Contenedor del Nombre de la Aplicación -->
+    <div class="flex items-center">
+        <a href="/login" class="text-2xl font-bold text-gray-900">
+            Contabilito
+        </a>
+    </div>
+
+    <!-- Sección Central (Nombre de la Sección Actual - Ahora dinámico con JS) -->
+    <div class="flex-grow text-center">
+        <span id="currentSectionTitle" class="text-xl font-semibold text-gray-700">Dashboard Principal</span>
+    </div>
+
+    <!-- Contenedor de la Derecha (Selector de Empresa y Perfil de Usuario) -->
+    <nav class="flex items-center space-x-4">
+        <!-- Selector de Empresa Activa -->
+        <div class="relative group">
+            <button id="companySelectorButton" class="bg-blue-100 text-blue-700 px-4 py-2 rounded-md font-medium hover:bg-blue-200 transition duration-200 flex items-center">
+                <span id="activeCompanyNameDisplay">{activeCompanyName || 'Sin Empresa'}</span> <span class="ml-2">&#9660;</span>
+            </button>
+            <div id="companyDropdown" class="absolute right-0 mt-2 w-64 bg-white rounded-md shadow-lg py-1 z-50 hidden group-hover:block transition-all duration-200 origin-top-right scale-95 opacity-0 group-hover:scale-100 group-hover:opacity-100">
+                <div id="companyList" class="py-1">
+                    {userCompanies.length === 0 ? (
+                        <p class="px-4 py-2 text-sm text-gray-700">No perteneces a ninguna empresa.</p>
+                    ) : (
+                        userCompanies.map(company => (
+                            <a 
+                                href="#" 
+                                class={`block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 
+                                    ${company.id === activeCompanyId ? 'bg-blue-50 font-semibold text-blue-800' : ''}`}
+                                data-company-id={company.id}
+                                data-company-name={company.company_name}
+                            >
+                                {company.company_name}
+                                {company.id === activeCompanyId && <span class="ml-2 text-blue-500 text-xs">(Activa)</span>}
+                            </a>
+                        ))
+                    )}
+                </div>
+                <div class="border-t border-gray-100"></div>
+                <!-- Botón para ir a la página de gestión de empresas -->
+                <a href="/dashboard/companies" class="block px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 hover:text-blue-700">
+                    Gestionar Empresas
+                </a>
+            </div>
+        </div>
+        
+        <!-- Botón de Cerrar Sesión -->
+        <button id="logoutButton" class="bg-red-500 text-white px-4 py-2 rounded-md font-medium hover:bg-red-600 transition duration-200">
+            Cerrar Sesión
+        </button>
+    </nav>
+</header>
+
+<script is:inline>
+    const companySelectorButton = document.getElementById('companySelectorButton');
+    const companyDropdown = document.getElementById('companyDropdown');
+    const companyList = document.getElementById('companyList');
+    const activeCompanyNameDisplay = document.getElementById('activeCompanyNameDisplay'); 
+    const logoutButton = document.getElementById('logoutButton');
+    const currentSectionTitle = document.getElementById('currentSectionTitle');
+
+    // **AJUSTE CLAVE AQUÍ:** Aseguramos que JSON.stringify siempre reciba un objeto/array válido.
+    // Si userCompanies es undefined/null, será un array vacío.
+    // Usamos JSON.stringify(userCompanies || []) para asegurar que siempre haya un array válido para stringify.
+    const initialUserCompanies = JSON.parse('{@html JSON.stringify(userCompanies || [])}');
+    // Para activeCompanyId, si es null, JSON.stringify(null) produce 'null', que es un JSON válido.
+    let currentActiveCompanyId = JSON.parse('{@html JSON.stringify(activeCompanyId)}'); 
+    // Convertir a number o null después de parsear
+    currentActiveCompanyId = currentActiveCompanyId === null ? null : parseInt(currentActiveCompanyId); 
+
+    // Función para establecer la empresa activa (actualiza la cookie en el servidor y redirige)
+    async function setActiveCompany(id, name) {
+        // Actualizar la UI inmediatamente para dar feedback al usuario
+        activeCompanyNameDisplay.textContent = name; 
+        
+        try {
+            const response = await fetch('/api/companies/switch', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ companyId: id })
+            });
+            if (response.ok) {
+                // Si el cambio fue exitoso en el servidor, redirigimos al dashboard
+                // para que la página se recargue con la nueva empresa activa.
+                window.location.href = '/dashboard'; 
+            } else {
+                const errorData = await response.json();
+                console.error('Error al establecer empresa activa en el servidor:', errorData.message);
+                // Aquí podrías mostrar un mensaje de error al usuario, quizás un modal.
+                alert('Error al cambiar de empresa: ' + (errorData.message || 'Desconocido')); // Usar modal
+            }
+        } catch (error) {
+            console.error('Error de red al establecer empresa activa:', error);
+            alert('Error de red al cambiar de empresa.'); // Usar modal
+        }
+    }
+
+    // Manejar clics en los elementos de la lista de empresas
+    companyList.addEventListener('click', (event) => {
+        const target = event.target;
+        // Asegúrate de que el clic fue en un <a> con data-company-id
+        if (target.tagName === 'A' && target.dataset.companyId) {
+            event.preventDefault(); // Prevenir navegación por defecto
+            const companyId = parseInt(target.dataset.companyId);
+            const companyName = target.dataset.companyName;
+            setActiveCompany(companyId, companyName);
+            companyDropdown.classList.add('hidden'); // Ocultar dropdown
+        }
+    });
+
+    // Toggle del dropdown al hacer click en el botón (además del hover)
+    companySelectorButton.addEventListener('click', (event) => {
+        event.stopPropagation(); // Evitar que el click se propague y cierre el dropdown inmediatamente
+        companyDropdown.classList.toggle('hidden');
+    });
+
+    // Ocultar dropdown si se hace click fuera
+    document.addEventListener('click', (event) => {
+        if (!companySelectorButton.contains(event.target) && !companyDropdown.contains(event.target)) {
+            companyDropdown.classList.add('hidden');
+        }
+    });
+
+    // Manejar el botón de cerrar sesión
+    logoutButton.addEventListener('click', async () => {
+        try {
+            const response = await fetch('/api/auth/logout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            if (response.ok) {
+                window.location.href = '/login'; // Redirigir a la página de login
+            } else {
+                const errorData = await response.json();
+                console.error('Error al cerrar sesión:', errorData.message);
+                alert('Error al cerrar sesión: ' + (errorData.message || 'Desconocido')); // Usar modal
+            }
+        } catch (error) {
+            console.error('Error de red al cerrar sesión:', error);
+            alert('Error de red al cerrar sesión.'); // Usar modal
+        }
+    });
+
+    // Función para actualizar el título de la sección dinámicamente
+    function updateSectionTitle() {
+        const path = window.location.pathname;
+        let title = 'Dashboard Principal'; // Título por defecto
+
+        if (path.includes('/dashboard/companies')) {
+            title = 'Gestión de Empresas';
+        } else if (path.includes('/dashboard/add-transaction')) {
+            title = 'Añadir Transacción';
+        } else if (path.includes('/dashboard/statistics')) {
+            title = 'Estadísticas y Reportes';
+        } else if (path.includes('/dashboard/accounts')) {
+            title = 'Gestión de Cuentas';
+        }
+        // Puedes añadir más condiciones para otras rutas
+        
+        if (currentSectionTitle) {
+            currentSectionTitle.textContent = title;
+        }
+    }
+
+    // Llamar al cargar la página
+    document.addEventListener('DOMContentLoaded', updateSectionTitle);
+</script>

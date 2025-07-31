@@ -1,0 +1,17 @@
+// @ts-check
+import { defineConfig } from 'astro/config';
+import tailwindcss from '@tailwindcss/vite';
+
+// https://astro.build/config
+export default defineConfig({
+  output: 'server',
+  vite: {
+    plugins: [tailwindcss()],
+    optimizeDeps: {
+      exclude: ['sqlite3'],
+    },
+    ssr: {
+      external: ['sqlite3'],
+    },
+  }
+});

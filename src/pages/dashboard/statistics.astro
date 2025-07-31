@@ -1,0 +1,673 @@
+---
+// src/pages/dashboard/statistics.astro
+// Este archivo ha sido actualizado para incluir la funcionalidad de descarga de reportes (PDF/CSV)
+// con la adición de gráficos en el PDF.
+// Se ha respetado la estructura y lógica existente, añadiendo solo los elementos necesarios.
+
+import { initializeDatabase } from '../../db/db.js';
+import pkg from 'jsonwebtoken';
+const { verify } = pkg;
+import HeaderDashboard from '../../components/Header-dashboard.astro';
+import Sidebar from '../../components/Sidebar.astro';
+import '../../styles/global.css';
+
+// Inicializa la base de datos al cargar la página
+await initializeDatabase().catch(err => console.error("Error al inicializar DB desde statistics.astro:", err));
+
+const JWT_SECRET = '0402Dionel.*';
+
+let username = 'Usuario';
+let userId = null;
+let activeCompanyId: number | null = null;
+let activeCompanyName: string = 'Sin Empresa';
+let userCompanies: any[] = []; // Para pasar a HeaderDashboard
+
+try {
+  const token = Astro.cookies.get('auth_token')?.value;
+
+  if (!token) {
+    return Astro.redirect('/login');
+  }
+
+  const decoded = verify(token, JWT_SECRET);
+  if (typeof decoded === 'object' && decoded !== null) {
+    username = decoded.username || 'Usuario';
+    userId = decoded.userId;
+  } else {
+    console.error("Token decodificado en statistics.astro no es un objeto:", decoded);
+    return Astro.redirect('/login');
+  }
+
+  const db = await initializeDatabase();
+
+  // Obtener TODAS las empresas a las que el usuario tiene acceso
+  userCompanies = await db.all(
+      `SELECT c.id, c.company_name, ucr.role
+       FROM companies c
+       JOIN user_company_roles ucr ON c.id = ucr.company_id
+       WHERE ucr.user_id = ?`,
+      userId
+  );
+
+  // Lógica para determinar la empresa activa
+  const activeCompanyCookie = Astro.cookies.get('active_company_id')?.value;
+  if (activeCompanyCookie) {
+      const companyInfo = await db.get(
+          `SELECT c.id, c.company_name FROM companies c JOIN user_company_roles ucr ON c.id = ucr.company_id WHERE c.id = ? AND ucr.user_id = ?`,
+          activeCompanyCookie,
+          userId
+      );
+      if (companyInfo) {
+          activeCompanyId = companyInfo.id;
+          activeCompanyName = companyInfo.company_name;
+      } else {
+          // Si la cookie existe pero el ID de empresa no es válido para este usuario, la limpiamos.
+          console.warn("Empresa activa en cookie no válida para el usuario o no encontrada en DB. Limpiando cookie.");
+          Astro.cookies.set('active_company_id', '', { expires: new Date(0), path: '/' });
+          activeCompanyId = null; // Asegurarse de que quede nulo
+      }
+  }
+
+  // Si no hay empresa activa (o la cookie fue limpiada) y el usuario tiene empresas,
+  // redirigimos para que seleccione una.
+  if (activeCompanyId === null && userCompanies.length > 0) {
+      console.warn("No hay empresa activa seleccionada. Redirigiendo a /dashboard/companies.");
+      return Astro.redirect('/dashboard/companies');
+  } else if (activeCompanyId === null && userCompanies.length === 0) {
+      // Si no tiene empresas, redirigir a la página de empresas para que cree una
+      console.warn("El usuario no tiene empresas. Redirigiendo a /dashboard/companies para crear una.");
+      return Astro.redirect('/dashboard/companies');
+  }
+
+
+} catch (error: unknown) {
+  if (error instanceof Error) {
+    console.error("Error en statistics.astro:", error.message);
+  } else {
+    console.error("Error en statistics.astro:", error);
+  }
+  return Astro.redirect('/login');
+}
+
+---
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Estadísticas | Contabilito</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+
+    <script type="module" src="/js/Chart.min.js"></script>
+</head>
+<body class="font-poppins bg-gray-100 min-h-screen flex flex-col">
+    <HeaderDashboard
+        activeCompanyId={activeCompanyId}
+        activeCompanyName={activeCompanyName}
+        userCompanies={userCompanies}
+    />
+
+    <div class="flex flex-grow pt-[60px]">
+        <Sidebar />
+
+        <main class="flex-grow p-8 ml-48">
+            <div class="bg-white rounded-2xl shadow-xl p-8 w-full mx-auto">
+                <h1 class="text-3xl font-extrabold text-gray-900 mb-6 text-center">
+                    Estadísticas y Reportes
+                </h1>
+                <p class="text-md text-gray-700 mb-6 text-center">
+                    Análisis financiero para: <span class="font-semibold text-blue-700">{activeCompanyName}</span>
+                </p>
+
+                <div class="mb-8 p-4 bg-gray-50 rounded-lg shadow-inner flex flex-col sm:flex-row items-center justify-center space-y-4 sm:space-y-0 sm:space-x-4">
+                    <label for="timePeriod" class="text-sm font-medium text-gray-700">Periodo:</label>
+                    <select id="timePeriod" class="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+                        <option value="thisMonth">Este Mes</option>
+                        <option value="last3Months">Últimos 3 Meses</option>
+                        <option value="thisYear">Este Año</option>
+                        <option value="lastYear">Año Anterior</option>
+                        <option value="custom">Rango Personalizado</option>
+                    </select>
+                    <div id="customDateRange" class="flex space-x-2 hidden">
+                        <input type="date" id="startDate" class="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
+                        <input type="date" id="endDate" class="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
+                    </div>
+                    <button id="applyFiltersBtn" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors duration-200">Aplicar Filtros</button>
+
+                    <div class="relative inline-block text-left">
+                        <button type="button" id="downloadReportBtn" class="inline-flex justify-center w-full rounded-md border border-gray-300 shadow-sm px-4 py-2 bg-white text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-colors duration-200" aria-haspopup="true" aria-expanded="true">
+                            <i data-lucide="download" class="w-4 h-4 mr-2"></i> Descargar Reporte
+                            <i data-lucide="chevron-down" class="-mr-1 ml-2 h-5 w-5"></i>
+                        </button>
+                        <div id="downloadDropdown" class="origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none hidden z-20">
+                            <div class="py-1" role="menu" aria-orientation="vertical" aria-labelledby="downloadReportBtn">
+                                <a href="#" id="downloadPdfBtn" class="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100" role="menuitem">
+                                    <i data-lucide="file-text" class="w-4 h-4 inline-block mr-2"></i> Descargar PDF
+                                </a>
+                                <a href="#" id="downloadCsvBtn" class="text-gray-700 block px-4 py-2 text-sm hover:bg-gray-100" role="menuitem">
+                                    <i data-lucide="file-spreadsheet" class="w-4 h-4 inline-block mr-2"></i> Descargar CSV
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div class="lg:col-span-3 bg-blue-50 p-6 rounded-lg shadow-inner text-center">
+                        <h2 class="text-2xl font-semibold text-blue-800 mb-2">Resumen del Periodo</h2>
+                        <p class="text-xl font-semibold text-gray-900 mb-2">Empresa Activa Actual: {activeCompanyName || 'Ninguna seleccionada'}</p>
+                        {activeCompanyId && <p class="text-sm text-gray-600">ID: {activeCompanyId}</p>}
+
+                        <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-700">Saldo Neto</h3>
+                                <p id="netBalance" class="text-3xl font-bold text-gray-900">Cargando...</p>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-700">Total Ingresos</h3>
+                                <p id="totalIncome" class="text-3xl font-bold text-green-600">Cargando...</p>
+                            </div>
+                            <div>
+                                <h3 class="text-lg font-semibold text-gray-700">Total Gastos</h3>
+                                <p id="totalExpense" class="text-3xl font-bold text-red-600">Cargando...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="lg:col-span-1 bg-white p-6 rounded-lg shadow-md flex flex-col items-center">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4 text-center">Ingresos por Categoría</h3>
+                        <div class="relative w-full" style="height: 300px;"> <canvas id="incomeByCategoryChart"></canvas>
+                        </div>
+                        <p id="incomeChartFeedback" class="text-center text-sm text-gray-500 mt-2"></p>
+                    </div>
+
+                    <div class="lg:col-span-1 bg-white p-6 rounded-lg shadow-md flex flex-col items-center">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4 text-center">Gastos por Categoría</h3>
+                        <div class="relative w-full" style="height: 300px;"> <canvas id="expenseByCategoryChart"></canvas>
+                        </div>
+                        <p id="expenseChartFeedback" class="text-center text-sm text-gray-500 mt-2"></p>
+                    </div>
+
+                    <div class="lg:col-span-2 bg-white p-6 rounded-lg shadow-md flex flex-col items-center">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4 text-center">Evolución del Saldo Neto</h3>
+                        <div class="relative w-full" style="height: 350px;"> <canvas id="netBalanceTrendChart"></canvas>
+                        </div>
+                        <p id="netBalanceChartFeedback" class="text-center text-sm text-gray-500 mt-2"></p>
+                    </div>
+
+                    <div class="lg:col-span-1 bg-white p-6 rounded-lg shadow-md">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4 text-center">Top Categorías de Gastos</h3>
+                        <div class="overflow-x-auto">
+                            <table class="min-w-full bg-white">
+                                <thead class="bg-gray-100 text-gray-600 uppercase text-xs leading-normal">
+                                    <tr>
+                                        <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Categoría
+                                        </th>
+                                        <th scope="col" class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                            Monto
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody id="topCategoriesTable" class="text-gray-700 text-sm font-light">
+                                    <tr><td colspan="2" class="py-2 px-4 text-center italic">Cargando...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <p id="topCategoriesFeedback" class="text-center text-sm text-gray-500 mt-2"></p>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script type="module" src="/js/Chart.min.js"></script>
+    <script is:inline>
+        // Initialize Lucide icons after DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        });
+
+        // Referencias a elementos del DOM
+        const netBalanceEl = document.getElementById('netBalance');
+        const totalIncomeEl = document.getElementById('totalIncome');
+        const totalExpenseEl = document.getElementById('totalExpense');
+        const incomeByCategoryChartCtx = document.getElementById('incomeByCategoryChart').getContext('2d');
+        const expenseByCategoryChartCtx = document.getElementById('expenseByCategoryChart').getContext('2d');
+        const netBalanceTrendChartCtx = document.getElementById('netBalanceTrendChart').getContext('2d');
+        const topCategoriesTableEl = document.getElementById('topCategoriesTable');
+
+        const timePeriodSelect = document.getElementById('timePeriod');
+        const customDateRangeDiv = document.getElementById('customDateRange');
+        const startDateInput = document.getElementById('startDate');
+        const endDateInput = document.getElementById('endDate');
+        const applyFiltersBtn = document.getElementById('applyFiltersBtn');
+
+        // Referencias a elementos del botón de descarga
+        const downloadReportBtn = document.getElementById('downloadReportBtn');
+        const downloadDropdown = document.getElementById('downloadDropdown');
+        const downloadPdfBtn = document.getElementById('downloadPdfBtn');
+        const downloadCsvBtn = document.getElementById('downloadCsvBtn');
+
+        // Variables para los objetos Chart.js
+        let incomeChart;
+        let expenseChart;
+        let netBalanceChart;
+
+        // Función para formatear moneda
+        const formatCurrency = (amount) => {
+            return new Intl.NumberFormat('es-VE', { style: 'currency', currency: 'VES' }).format(amount);
+        };
+
+        // Función para obtener la clase de color del saldo
+        const getBalanceClass = (balance) => {
+            return balance >= 0 ? 'text-green-600' : 'text-red-600';
+        };
+
+        // Función para calcular las fechas de inicio y fin según el periodo seleccionado
+        const calculateDates = (period) => {
+            const today = new Date();
+            let startDate, endDate;
+
+            switch (period) {
+                case 'thisMonth':
+                    startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+                    endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0); // Último día del mes
+                    break;
+                case 'last3Months':
+                    startDate = new Date(today.getFullYear(), today.getMonth() - 2, 1);
+                    endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+                    break;
+                case 'thisYear':
+                    startDate = new Date(today.getFullYear(), 0, 1);
+                    endDate = new Date(today.getFullYear(), 11, 31);
+                    break;
+                case 'lastYear':
+                    startDate = new Date(today.getFullYear() - 1, 0, 1);
+                    endDate = new Date(today.getFullYear() - 1, 11, 31);
+                    break;
+                case 'custom':
+                    startDate = new Date(startDateInput.value);
+                    endDate = new Date(endDateInput.value);
+                    break;
+                default:
+                    // Por defecto, este mes
+                    startDate = new Date(today.getFullYear(), today.getMonth(), 1);
+                    endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            }
+            // Asegurarse de que las fechas estén en formato YYYY-MM-DD para la API
+            const formatApiDate = (date) => {
+                const y = date.getFullYear();
+                const m = String(date.getMonth() + 1).padStart(2, '0');
+                const d = String(date.getDate()).padStart(2, '0');
+                return `${y}-${m}-${d}`;
+            };
+            return { startDate: formatApiDate(startDate), endDate: formatApiDate(endDate) };
+        };
+
+        // Función principal para cargar y renderizar los reportes
+        async function loadReports() {
+            console.log('loadReports: Iniciando carga de reportes...');
+            // Mostrar "Cargando..." en todos los elementos
+            if (netBalanceEl) netBalanceEl.textContent = 'Cargando...';
+            if (totalIncomeEl) totalIncomeEl.textContent = 'Cargando...';
+            if (totalExpenseEl) totalExpenseEl.textContent = 'Cargando...';
+            topCategoriesTableEl.innerHTML = '<tr><td colspan="2" class="py-2 px-4 text-center italic">Cargando...</td></tr>';
+            document.getElementById('incomeChartFeedback').textContent = '';
+            document.getElementById('expenseChartFeedback').textContent = '';
+            document.getElementById('netBalanceChartFeedback').textContent = '';
+            document.getElementById('topCategoriesFeedback').textContent = '';
+
+
+            // Destruir gráficos anteriores si existen
+            console.log('loadReports: Destruyendo gráficos anteriores...');
+            if (incomeChart) incomeChart.destroy();
+            if (expenseChart) expenseChart.destroy();
+            if (netBalanceChart) netBalanceChart.destroy();
+
+            const selectedPeriod = timePeriodSelect.value;
+            const { startDate, endDate } = calculateDates(selectedPeriod);
+            console.log(`loadReports: Periodo seleccionado: ${selectedPeriod}, Fechas: ${startDate} a ${endDate}`);
+
+            try {
+                // Llamada a la API de summary exactamente como la tenías.
+                // El endpoint de summary ya obtiene el company_id desde la cookie.
+                const response = await fetch(`/api/reports/summary?startDate=${startDate}&endDate=${endDate}`);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('loadReports: Datos de reportes recibidos:', data);
+
+                    // 1. Resumen General de Periodo
+                    if (netBalanceEl) {
+                        netBalanceEl.textContent = formatCurrency(data.netBalance);
+                        netBalanceEl.className = `${getBalanceClass(data.netBalance)} text-3xl font-bold mt-1`; // Aplicar clase de color
+                    }
+                    if (totalIncomeEl) totalIncomeEl.textContent = formatCurrency(data.totalIncome);
+                    if (totalExpenseEl) totalExpenseEl.textContent = formatCurrency(data.totalExpense);
+
+                    // 2. Gráficos por Categoría
+                    incomeChart = renderPieChart(incomeByCategoryChartCtx, data.incomeByCategory, 'Ingresos', 'incomeChart');
+                    expenseChart = renderPieChart(expenseByCategoryChartCtx, data.expenseByCategory, 'Gastos', 'expenseChart');
+
+                    // 3. Gráfico de Líneas de Saldo Neto en el Tiempo
+                    netBalanceChart = renderLineChart(netBalanceTrendChartCtx, data.balanceTrend, 'Evolución del Saldo Neto', 'netBalanceChart');
+
+                    // 4. Tabla de Top Categorías
+                    renderTopCategoriesTable(data.topExpenseCategories);
+
+                } else {
+                    const errorData = await response.json();
+                    console.error('loadReports: Error al cargar reportes:', errorData.message);
+                    // Mostrar mensajes de error en los elementos correspondientes
+                    if (netBalanceEl) netBalanceEl.textContent = 'Error';
+                    if (totalIncomeEl) totalIncomeEl.textContent = 'Error';
+                    if (totalExpenseEl) totalExpenseEl.textContent = 'Error';
+                    // Clear previous chart content
+                    incomeByCategoryChartCtx.clearRect(0, 0, incomeByCategoryChartCtx.canvas.width, incomeByCategoryChartCtx.canvas.height);
+                    expenseByCategoryChartCtx.clearRect(0, 0, expenseByCategoryChartCtx.canvas.width, expenseByCategoryChartCtx.canvas.height);
+                    netBalanceTrendChartCtx.clearRect(0, 0, netBalanceTrendChartCtx.canvas.width, netBalanceTrendChartCtx.canvas.height);
+                    document.getElementById('incomeChartFeedback').textContent = `Error al cargar gráfico: ${errorData.message || 'Desconocido'}`;
+                    document.getElementById('expenseChartFeedback').textContent = `Error al cargar gráfico: ${errorData.message || 'Desconocido'}`;
+                    document.getElementById('netBalanceChartFeedback').textContent = `Error al cargar gráfico: ${errorData.message || 'Desconocido'}`;
+                    topCategoriesTableEl.innerHTML = `<tr><td colspan="2" class="py-2 px-4 text-center italic text-red-600">Error al cargar datos: ${errorData.message || 'Desconocido'}</td></tr>`;
+                }
+            } catch (error) {
+                console.error('loadReports: Error de red al cargar reportes:', error);
+                // Mostrar mensajes de error de red
+                if (netBalanceEl) netBalanceEl.textContent = 'Error de red';
+                if (totalIncomeEl) totalIncomeEl.textContent = 'Error de red';
+                if (totalExpenseEl) totalExpenseEl.textContent = 'Error de red';
+                // Clear previous chart content
+                incomeByCategoryChartCtx.clearRect(0, 0, incomeByCategoryChartCtx.canvas.width, incomeByCategoryChartCtx.canvas.height);
+                expenseByCategoryChartCtx.clearRect(0, 0, expenseByCategoryChartCtx.canvas.width, expenseByCategoryChartCtx.canvas.height);
+                netBalanceTrendChartCtx.clearRect(0, 0, netBalanceTrendChartCtx.canvas.width, netBalanceTrendChartCtx.canvas.height);
+                document.getElementById('incomeChartFeedback').textContent = 'Error de red al cargar gráfico.';
+                document.getElementById('expenseChartFeedback').textContent = 'Error de red al cargar gráfico.';
+                document.getElementById('netBalanceChartFeedback').textContent = 'Error de red al cargar gráfico.';
+                topCategoriesTableEl.innerHTML = `<tr><td colspan="2" class="py-2 px-4 text-center italic text-red-600">Error de red.</td></tr>`;
+            }
+        }
+
+        // --- Funciones para Renderizar Gráficos (Chart.js) ---
+        // Estas funciones ahora devuelven la instancia del Chart para poder referenciarla.
+        function renderPieChart(ctx, data, title, chartName) {
+            console.log(`renderPieChart: Intentando renderizar ${title} (${chartName})...`);
+            const labels = Object.keys(data);
+            const values = Object.values(data);
+            const backgroundColors = generateColors(labels.length);
+
+            // Destruir la instancia anterior si existe
+            if (window[chartName]) {
+                console.log(`renderPieChart: Destruyendo Chart existente para ${chartName}.`);
+                window[chartName].destroy();
+            }
+
+            if (labels.length === 0) {
+                console.log(`renderPieChart: No hay datos para ${title}. Limpiando canvas.`);
+                document.getElementById(`${chartName}Feedback`).textContent = `No hay datos de ${title.toLowerCase()} para este periodo.`;
+                ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height); // Limpiar el canvas
+                return null; // Devuelve null si no hay datos para el gráfico
+            } else {
+                document.getElementById(`${chartName}Feedback`).textContent = ''; // Limpiar mensaje de feedback
+            }
+
+            // Usar la variable global Chart
+            const chartInstance = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        data: values,
+                        backgroundColor: backgroundColors,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false, // Permitir que el canvas se ajuste al contenedor
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                        },
+                        title: {
+                            display: false, // El título ya está en el HTML
+                            text: title
+                        }
+                    }
+                }
+            });
+            window[chartName] = chartInstance; // Almacenar la instancia en una variable global
+            console.log(`renderPieChart: Chart para ${title} creado exitosamente.`);
+            return chartInstance;
+        }
+
+        function renderLineChart(ctx, data, title, chartName) {
+            console.log(`renderLineChart: Intentando renderizar ${title} (${chartName})...`);
+            const labels = data.map(item => item.date);
+            const balances = data.map(item => item.balance);
+
+            // Destruir la instancia anterior si existe
+            if (window[chartName]) {
+                console.log(`renderLineChart: Destruyendo Chart existente para ${chartName}.`);
+                window[chartName].destroy();
+            }
+
+            if (labels.length === 0) {
+                console.log(`renderLineChart: No hay datos para ${title}. Limpiando canvas.`);
+                document.getElementById(`${chartName}Feedback`).textContent = `No hay datos de ${title.toLowerCase()} para este periodo.`;
+                ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height); // Limpiar el canvas
+                return null; // Devuelve null si no hay datos para el gráfico
+            } else {
+                document.getElementById(`${chartName}Feedback`).textContent = ''; // Limpiar mensaje de feedback
+            }
+
+            // Usar la variable global Chart
+            const chartInstance = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Saldo Neto',
+                        data: balances,
+                        borderColor: '#2563eb', // blue-600
+                        backgroundColor: 'rgba(59, 130, 246, 0.2)', // blue-500 con transparencia
+                        fill: true,
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false, // Permitir que el canvas se ajuste al contenedor
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        title: {
+                            display: false,
+                            text: title
+                        }
+                    },
+                    scales: {
+                        x: {
+                            title: {
+                                display: true,
+                                text: 'Fecha'
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Saldo'
+                            },
+                            beginAtZero: false
+                        }
+                    }
+                }
+            });
+            window[chartName] = chartInstance; // Almacenar la instancia en una variable global
+            console.log(`renderLineChart: Chart para ${title} creado exitosamente.`);
+            return chartInstance;
+        }
+
+        // Función para renderizar la tabla de Top Categorías
+        function renderTopCategoriesTable(categoriesData) {
+            console.log('renderTopCategoriesTable: Renderizando tabla de top categorías...');
+            let tableHtml = '';
+            if (Object.keys(categoriesData).length === 0) {
+                tableHtml = '<tr><td colspan="2" class="py-2 px-4 text-center italic">No hay datos de categorías para este periodo.</td></tr>';
+                document.getElementById('topCategoriesFeedback').textContent = 'No hay datos de top categorías para este periodo.';
+            } else {
+                document.getElementById('topCategoriesFeedback').textContent = ''; // Limpiar mensaje de feedback
+                // Convertir el objeto a un array de pares [categoría, monto] y ordenar
+                const sortedCategories = Object.entries(categoriesData).sort(([, a], [, b]) => b - a);
+
+                sortedCategories.forEach(([category, amount]) => {
+                    tableHtml += `
+                        <tr class="border-b border-gray-200 hover:bg-gray-50">
+                            <td class="py-2 px-4 text-left">${category || 'Sin Categoría'}</td>
+                            <td class="py-2 px-4 text-right">${formatCurrency(amount)}</td>
+                        </tr>
+                    `;
+                });
+            }
+            topCategoriesTableEl.innerHTML = tableHtml;
+            console.log('renderTopCategoriesTable: Tabla de top categorías actualizada.');
+        }
+
+        // Función para generar colores aleatorios (para gráficos de pastel)
+        function generateColors(numColors) {
+            const colors = [];
+            for (let i = 0; i < numColors; i++) {
+                const hue = (i * 137.508) % 360; // Golden angle approximation
+                colors.push(`hsl(${hue}, 70%, 50%)`);
+            }
+            return colors;
+        };
+
+        // --- Manejo de Filtros de Fecha ---
+        timePeriodSelect.addEventListener('change', (event) => {
+            if (event.target.value === 'custom') {
+                customDateRangeDiv.classList.remove('hidden');
+            } else {
+                customDateRangeDiv.classList.add('hidden');
+            }
+        });
+
+        applyFiltersBtn.addEventListener('click', loadReports);
+
+        // --- Manejo del Botón de Descarga ---
+        downloadReportBtn.addEventListener('click', () => {
+            downloadDropdown.classList.toggle('hidden');
+        });
+
+        // Cerrar el dropdown si se hace clic fuera
+        window.addEventListener('click', (event) => {
+            if (!downloadReportBtn.contains(event.target) && !downloadDropdown.contains(event.target)) {
+                downloadDropdown.classList.add('hidden');
+            }
+        });
+
+        // NUEVO: Función para obtener la imagen Base64 de un canvas
+        function getCanvasImage(canvasId) {
+            const canvas = document.getElementById(canvasId);
+            if (canvas && canvas.chart) { // Asegúrate de que el canvas tenga un gráfico asociado
+                // Forzar el redibujado para asegurar que la imagen está actualizada
+                canvas.chart.resize();
+                canvas.chart.render();
+                return canvas.toDataURL('image/png'); // Exportar como PNG Base64
+            }
+            return null;
+        }
+
+        downloadPdfBtn.addEventListener('click', async (event) => {
+            event.preventDefault();
+            downloadDropdown.classList.add('hidden'); // Ocultar dropdown
+
+            const { startDate, endDate } = calculateDates(timePeriodSelect.value);
+
+            // Obtener imágenes de los gráficos
+            const incomeChartImage = getCanvasImage('incomeByCategoryChart');
+            const expenseChartImage = getCanvasImage('expenseByCategoryChart');
+            const netBalanceTrendImage = getCanvasImage('netBalanceTrendChart');
+
+            // Mostrar un mensaje de carga
+            alert("Generando PDF con gráficos... Esto puede tomar unos segundos.");
+
+            try {
+                // Cambiar a método POST para enviar datos grandes (imágenes Base64)
+                const response = await fetch(`/api/reports/download-pdf`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        startDate,
+                        endDate,
+                        incomeChartImage,
+                        expenseChartImage,
+                        netBalanceTrendImage
+                    }),
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `reporte-financiero-con-graficos-${startDate}-a-${endDate}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                } else {
+                    const errorData = await response.json();
+                    alert(`Error al generar PDF: ${errorData.message || 'Desconocido'}`);
+                }
+            } catch (error) {
+                console.error('Error de red al descargar PDF con gráficos:', error);
+                alert('Error de red al generar el PDF con gráficos. Inténtalo de nuevo.');
+            }
+        });
+
+        downloadCsvBtn.addEventListener('click', async (event) => {
+            event.preventDefault();
+            downloadDropdown.classList.add('hidden'); // Ocultar dropdown
+
+            const { startDate, endDate } = calculateDates(timePeriodSelect.value);
+
+            // Mostrar un mensaje de carga
+            alert("Generando CSV...");
+
+            try {
+                // La API de descarga de CSV obtendrá el companyId de la cookie.
+                const response = await fetch(`/api/reports/download-csv?startDate=${startDate}&endDate=${endDate}`);
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `reporte-transacciones-${startDate}-a-${endDate}.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                } else {
+                    const errorData = await response.json();
+                    alert(`Error al generar CSV: ${errorData.message || 'Desconocido'}`);
+                }
+            } catch (error) {
+                console.error('Error de red al descargar CSV:', error);
+                alert('Error de red al generar el CSV. Inténtalo de nuevo.');
+            }
+        });
+
+
+        // Cargar reportes al cargar la página
+        document.addEventListener('DOMContentLoaded', loadReports);
+    </script>
+</body>
+</html>

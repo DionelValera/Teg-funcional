@@ -1,0 +1,246 @@
+---
+// src/components/RegisterForm.astro
+import '../styles/global.css'; // Asegúrate de que esto esté presente
+---
+
+<!-- Contenedor principal con el mismo degradado de fondo -->
+<div class="min-h-screen flex items-center justify-center p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-blue-600 to-teal-500">
+  <!-- Contenedor del formulario de registro: max-w ajustado para compactar verticalmente -->
+  <div class="mt-14 max-w-xl w-full space-y-5 p-8 bg-white dark:bg-gray-800 rounded-2xl shadow-3xl z-10 border border-gray-100 dark:border-gray-700 transform transition-all duration-300 hover:scale-[1.02] hover:shadow-4xl">
+    <div class="text-center">
+      <h2 class="mt-2 text-4xl font-extrabold text-gray-900 dark:text-white leading-tight">
+        ¡Crea tu cuenta!
+      </h2>
+      <p class="mt-2 text-md text-gray-600 dark:text-gray-400">
+        Regístrate para empezar a usar nuestra plataforma
+      </p>
+    </div>
+
+    <form id="registerForm" class="mt-8 space-y-5" action="#" method="POST">
+      <!-- Grupo de Nombre y Apellido -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label for="first-name" class="sr-only">Nombre</label>
+          <input
+            id="first-name"
+            name="firstName"
+            type="text"
+            autocomplete="given-name"
+            required
+            class="appearance-none rounded-md relative block w-full px-4 py-3 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm bg-gray-50 dark:bg-gray-700 transition duration-200 ease-in-out"
+            placeholder="Nombre"
+          />
+        </div>
+        <div>
+          <label for="last-name" class="sr-only">Apellido</label>
+          <input
+            id="last-name"
+            name="lastName"
+            type="text"
+            autocomplete="family-name"
+            required
+            class="appearance-none rounded-md relative block w-full px-4 py-3 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm bg-gray-50 dark:bg-gray-700 transition duration-200 ease-in-out"
+            placeholder="Apellido"
+          />
+        </div>
+      </div>
+
+      <!-- Grupo de Nombre de Usuario y Nombre de Empresa -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label for="username" class="sr-only">Nombre de Usuario</label>
+          <input
+            id="username"
+            name="username"
+            type="text"
+            autocomplete="username"
+            required
+            class="appearance-none rounded-md relative block w-full px-4 py-3 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm bg-gray-50 dark:bg-gray-700 transition duration-200 ease-in-out"
+            placeholder="Nombre de Usuario"
+          />
+        </div>
+        <div>
+          <label for="company-name" class="sr-only">Nombre de Empresa (Opcional)</label>
+          <input
+            id="company-name"
+            name="companyName"
+            type="text"
+            autocomplete="organization"
+            class="appearance-none rounded-md relative block w-full px-4 py-3 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm bg-gray-50 dark:bg-gray-700 transition duration-200 ease-in-out"
+            placeholder="Nombre de Empresa (Opcional)"
+          />
+        </div>
+      </div>
+
+      <!-- Correo Electrónico (ancho completo) -->
+      <div>
+        <label for="email-address" class="sr-only">Correo Electrónico</label>
+        <input
+          id="email-address"
+          name="email"
+          type="email"
+          autocomplete="email"
+          required
+          class="appearance-none rounded-md relative block w-full px-4 py-3 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm bg-gray-50 dark:bg-gray-700 transition duration-200 ease-in-out"
+          placeholder="Correo Electrónico"
+        />
+      </div>
+
+      <!-- Contraseñas: Ahora lado a lado con un solo botón de mostrar/ocultar -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4 relative">
+        <div>
+          <label for="password" class="sr-only">Contraseña</label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            autocomplete="new-password"
+            required
+            class="appearance-none rounded-md relative block w-full px-4 py-3 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm bg-gray-50 dark:bg-gray-700 transition duration-200 ease-in-out"
+            placeholder="Contraseña"
+          />
+        </div>
+        <div>
+          <label for="confirm-password" class="sr-only">Confirmar Contraseña</label>
+          <input
+            id="confirm-password"
+            name="confirm_password"
+            type="password"
+            autocomplete="new-password"
+            required
+            class="appearance-none rounded-md relative block w-full px-4 py-3 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm bg-gray-50 dark:bg-gray-700 transition duration-200 ease-in-out"
+            placeholder="Confirmar Contraseña"
+          />
+        </div>
+        <!-- Botón Mostrar/Ocultar Contraseña - Posicionado debajo y a la derecha de las contraseñas -->
+        <button type="button" id="togglePassword" class="absolute -bottom-6 right-0 text-sm leading-5 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 focus:outline-none">
+          Mostrar/Ocultar
+        </button>
+      </div>
+
+      <!-- Términos y Condiciones -->
+      <div class="flex items-center justify-center pt-4"> <!-- Añadido pt-4 para separar del grupo de contraseñas -->
+        <input
+          id="terms-checkbox"
+          name="termsAccepted"
+          type="checkbox"
+          required
+          class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+        />
+        <label for="terms-checkbox" class="ml-2 block text-sm text-gray-900 dark:text-gray-300">
+          Acepto los <a href="#" class="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300">Términos de Uso</a> y <a href="#" class="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300">Política de Privacidad</a>.
+        </label>
+      </div>
+
+      <div>
+        <button
+          type="submit"
+          class="group relative w-full flex justify-center py-3 px-4 border border-transparent text-lg font-semibold rounded-md text-white bg-gradient-to-r from-blue-900 to-blue-600 hover:from-blue-600 hover:to-blue-900 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-400 ease-in-out transform hover:scale-105 shadow-lg hover:shadow-xl"
+        >
+          <span class="absolute left-0 inset-y-0 flex items-center pl-3">
+            <svg class="h-6 w-6 text-white group-hover:text-blue-200 transition-colors duration-200" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path d="M8 9a3 3 0 100-6 3 3 0 000 6zM8 11a6 6 0 016 6H2a6 6 0 016-6zM16 7a1 1 0 10-2 0v1h-1a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V7z" />
+            </svg>
+          </span>
+          Registrarse
+        </button>
+      </div>
+    </form>
+
+    <p class="mt-4 text-center text-sm text-gray-600 dark:text-gray-400">
+      ¿Ya tienes una cuenta?
+      <a href="/login" class="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 transition duration-200 ease-in-out">Inicia sesión aquí</a>.
+    </p>
+
+    <div id="feedbackMessage" class="mt-4 text-center text-sm font-medium"></div>
+  </div>
+</div>
+
+<script is:inline>
+  // Script del lado del cliente para manejar el envío del formulario de registro
+  const registerForm = document.getElementById('registerForm');
+  const feedbackMessage = document.getElementById('feedbackMessage');
+  const passwordInput = document.getElementById('password');
+  const confirmPasswordInput = document.getElementById('confirm-password');
+  const togglePasswordButton = document.getElementById('togglePassword');
+
+  // Función para mostrar/ocultar contraseña
+  togglePasswordButton.addEventListener('click', () => {
+    const type = passwordInput.type === 'password' ? 'text' : 'password';
+    passwordInput.type = type;
+    confirmPasswordInput.type = type; // Aplica también a la confirmación
+    togglePasswordButton.textContent = type === 'password' ? 'Mostrar/Ocultar' : 'Ocultar/Mostrar';
+  });
+
+  registerForm.addEventListener('submit', async (event) => {
+    event.preventDefault(); // Evita el envío tradicional del formulario
+
+    const firstName = document.getElementById('first-name').value;
+    const lastName = document.getElementById('last-name').value;
+    const username = document.getElementById('username').value;
+    const companyName = document.getElementById('company-name').value; // Opcional, puede estar vacío
+    const email = document.getElementById('email-address').value;
+    const password = passwordInput.value; // Usamos la referencia a los inputs
+    const confirmPassword = confirmPasswordInput.value;
+    const termsAccepted = document.getElementById('terms-checkbox').checked;
+
+    // Validación simple en el cliente
+    if (!firstName || !lastName || !username || !email || !password || !confirmPassword) {
+      feedbackMessage.textContent = 'Por favor, completa todos los campos requeridos.';
+      feedbackMessage.className = 'mt-4 text-center text-sm font-medium text-red-600';
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      feedbackMessage.textContent = 'Las contraseñas no coinciden.';
+      feedbackMessage.className = 'mt-4 text-center text-sm font-medium text-red-600';
+      return;
+    }
+    if (password.length < 6) {
+        feedbackMessage.textContent = 'La contraseña debe tener al menos 6 caracteres.';
+        feedbackMessage.className = 'mt-4 text-center text-sm font-medium text-red-600';
+        return;
+    }
+    if (!termsAccepted) {
+        feedbackMessage.textContent = 'Debes aceptar los Términos de Uso y Política de Privacidad.';
+        feedbackMessage.className = 'mt-4 text-center text-sm font-medium text-red-600';
+        return;
+    }
+
+
+    try {
+      const response = await fetch('/api/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          firstName,
+          lastName,
+          username,
+          companyName,
+          email,
+          password,
+          termsAccepted // Enviamos el estado de aceptación de términos
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        feedbackMessage.textContent = data.message + ' ¡Ahora puedes iniciar sesión!';
+        feedbackMessage.className = 'mt-4 text-center text-sm font-medium text-green-600';
+        setTimeout(() => {
+            window.location.href = '/login';
+        }, 2000);
+      } else {
+        feedbackMessage.textContent = data.message || 'Error al registrar el usuario.';
+        feedbackMessage.className = 'mt-4 text-center text-sm font-medium text-red-600';
+      }
+    } catch (error) {
+      console.error('Error al enviar la solicitud de registro:', error);
+      feedbackMessage.textContent = 'No se pudo conectar al servidor para el registro.';
+      feedbackMessage.className = 'mt-4 text-center text-sm font-medium text-red-600';
+    }
+  });
+</script>

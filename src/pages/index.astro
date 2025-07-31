@@ -1,0 +1,60 @@
+---
+// src/pages/index.astro
+import Header from '../components/Header-index.astro'; // Usando tu nombre de componente
+import '../styles/global.css'; // Asegúrate de que esto esté presente
+import Layout from '../layouts/Layout.astro';
+import Footer from '../components/Footer-index.astro'; // Usando tu nombre de componente
+import { initializeDatabase } from '../db/db.js'; // Importa la función de inicialización
+
+// Inicializa la base de datos al cargar la página principal
+// Esto garantiza que las tablas existan antes de cualquier operación.
+await initializeDatabase().catch(err => console.error("Error al inicializar DB desde index.astro:", err));
+---
+
+<Layout>  
+
+    <body class="font-poppins flex flex-col">
+        <div class="flex flex-col min-h-screen bg-gradient-to-br from-blue-400 to-blue-900">
+
+            <Header />
+            
+            <main class="flex min-h-[300vh] flex-grow mt-12 justify-center p-4">
+                <section class="h-screen mt-20">
+                    
+                    <div class=" bg-white rounded-2xl shadow-2xl shadow-black p-8 sm:p-10 lg:p-12 max-w-4xl w-full text-center md:text-left flex flex-col md:flex-row items-center justify-center md:justify-between gap-8">
+                        
+                        <div class="flex-1 space-y-2 max-w-xl md:pr-8">
+                            <h1 class="text-3xl sm:text-5xl font-extrabold text-gray-900 leading-tight">
+                                Organiza tus finanzas con <span class="text-blue-700">Contabilito</span>
+                            </h1>
+                            <p class="text-lg text-gray-700 mt-2">
+                                Lleva un control impecable de tus ingresos y gastos. Regístrate hoy mismo y toma el control de tu dinero.
+                            </p>
+                            <div class="mt-3 flex flex-col justify-center gap-4">
+                                <a href="/register" class="inline-flex items-center justify-center px-8 py-4 border border-transparent text-xl font-bold rounded-lg shadow-md text-white bg-blue-700 hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-blue-600 focus:ring-blue-500 transition-all duration-400 transform hover:scale-110">
+                                    Regístrate Gratis
+                                    <svg class="ml-2 -mr-1 w-6 h-6 text-white group-hover:text-blue-200 transition-colors duration-200" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                                    <path d="M8 9a3 3 0 100-6 3 3 0 000 6zM8 11a6 6 0 016 6H2a6 6 0 016-6zM16 7a1 1 0 10-2 0v1h-1a1 1 0 100 2h1v1a1 1 0 102 0v-1h1a1 1 0 100-2h-1V7z" />
+                                </svg>
+                                </a>
+                                
+                                <a href="/login" class="inline-flex items-center justify-center px-8 py-4 border border-blue-600 text-xl font-bold rounded-lg shadow-md text-blue-600 hover:bg-blue-50 hover:border-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-blue-100 focus:ring-blue-500 transition-all duration-400 transform hover:scale-110">
+                                Ya tengo cuenta
+                                <svg class="ml-2 -mr-1 w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h7a3 3 0 013 3v1"></path></svg>
+                            </a>
+                            
+                        </div>
+                    </div>
+                    
+                    <div class="flex-none w-auto h-96 md:w-80 md:h-96 rounded-2xl overflow-hidden flex items-center justify-center">
+                        <img src="/icono.png" alt="Imagen de Contabilito" class="w-full h-full object-cover">
+                    </div>
+                    
+                </div>
+            </section>
+            
+        </main>
+    </div>
+    <Footer/>
+</body>
+</Layout>

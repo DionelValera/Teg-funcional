@@ -1,0 +1,129 @@
+---
+// src/components/LoginForm.astro
+---
+
+<div class="min-h-screen flex items-center justify-center p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-blue-600 to-teal-500">
+  <div class="max-w-md w-full space-y-8 p-10 bg-white dark:bg-gray-800 rounded-2xl shadow-3xl z-10 border border-gray-100 dark:border-gray-700 transform transition-all duration-300 hover:scale-[1.02] hover:shadow-4xl">
+    <div class="text-center">
+      <h2 class="mt-6 text-4xl font-extrabold text-gray-900 dark:text-white leading-tight">
+        ¡Bienvenido de nuevo!
+      </h2>
+      <p class="mt-2 text-md text-gray-600 dark:text-gray-400">
+        Inicia sesión en tu cuenta para continuar
+      </p>
+    </div>
+
+    <form id="loginForm" class="mt-8 space-y-6" action="#" method="POST">
+      <div class="rounded-md shadow-sm -space-y-px">
+        <div>
+          <label for="email" class="sr-only">Correo Electrónico</label>
+          <input
+            id="email-address"
+            name="email"
+            type="email"
+            autocomplete="email"
+            required
+            class="appearance-none rounded-t-md relative block w-full px-4 py-3 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm bg-gray-50 dark:bg-gray-700 transition duration-200 ease-in-out"
+            placeholder="Correo Electrónico"
+          />
+        </div>
+        <div>
+          <label for="password" class="sr-only">Contraseña</label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
+            class="appearance-none rounded-b-md relative block w-full px-4 py-3 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-white focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm bg-gray-50 dark:bg-gray-700 transition duration-200 ease-in-out"
+            placeholder="Contraseña"
+          />
+        </div>
+      </div>
+
+      <div class="flex items-center justify-between">
+        <div class="flex items-center">
+          <input
+            id="remember-me"
+            name="remember-me"
+            type="checkbox"
+            class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+          />
+          <label for="remember-me" class="ml-2 block text-sm text-gray-900 dark:text-gray-300">
+            Recordarme
+          </label>
+        </div>
+
+        <div class="text-sm">
+          <a href="#" class="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 transition duration-200 ease-in-out">
+            ¿Olvidaste tu contraseña?
+          </a>
+        </div>
+      </div>
+
+      <div>
+        <button
+          type="submit"
+          class="group relative w-full flex justify-center py-3 px-4 border border-transparent text-lg font-semibold rounded-md text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-200 ease-in-out transform hover:scale-105 shadow-lg hover:shadow-xl"
+        >
+          <span class="absolute left-0 inset-y-0 flex items-center pl-3">
+            <svg class="h-6 w-6 text-white group-hover:text-blue-200 transition-colors duration-200" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+              <path fill-rule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clip-rule="evenodd" />
+            </svg>
+          </span>
+          Iniciar Sesión
+        </button>
+      </div>
+    </form>
+
+    <p class="mt-8 text-center text-sm text-gray-600 dark:text-gray-400">
+      ¿No tienes una cuenta?
+      <a href="/register" class="font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 transition duration-200 ease-in-out">Regístrate aquí</a>.
+    </p>
+
+    <div id="feedbackMessage" class="mt-4 text-center text-sm font-medium"></div>
+  </div>
+</div>
+
+<script is:inline>
+  // Script que se ejecuta en el navegador
+  const loginForm = document.getElementById('loginForm');
+  const feedbackMessage = document.getElementById('feedbackMessage');
+
+  loginForm.addEventListener('submit', async (event) => {
+    event.preventDefault(); // Evita el envío tradicional del formulario
+
+    const email = document.getElementById('email-address').value;
+    const password = document.getElementById('password').value;
+
+    try {
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        // Inicio de sesión exitoso
+        feedbackMessage.textContent = data.message;
+        feedbackMessage.className = 'mt-4 text-center text-sm font-medium text-green-600';
+        // Aquí podrías redirigir al usuario, guardar un token, etc.
+        console.log('Usuario autenticado:', data.user);
+        // Ejemplo de redirección (descomentar para usar):
+        window.location.href = '/dashboard';
+      } else {
+        // Error en el inicio de sesión
+        feedbackMessage.textContent = data.message || 'Error al iniciar sesión.';
+        feedbackMessage.className = 'mt-4 text-center text-sm font-medium text-red-600';
+      }
+    } catch (error) {
+      console.error('Error al enviar la solicitud:', error);
+      feedbackMessage.textContent = 'No se pudo conectar al servidor.';
+      feedbackMessage.className = 'mt-4 text-center text-sm font-medium text-red-600';
+    }
+  });
+</script>

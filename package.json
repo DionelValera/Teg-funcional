@@ -1,0 +1,28 @@
+{
+  "name": "contabilito",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@tailwindcss/vite": "^4.1.11",
+    "astro": "^5.11.0",
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.2",
+    "chart.js": "^4.5.0",
+    "chartjs": "^0.3.24",
+    "jsonwebtoken": "^9.0.2",
+    "nodejs": "^0.0.0",
+    "pdfmake": "^0.2.20",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7",
+    "tailwindcss": "^4.1.11"
+  },
+  "devDependencies": {
+    "@types/jsonwebtoken": "^9.0.10"
+  }
+}

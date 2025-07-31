@@ -1,0 +1,866 @@
+---
+// src/pages/dashboard/settings.astro
+import { initializeDatabase } from '../../db/db.js';
+import pkg from 'jsonwebtoken';
+const { verify } = pkg;
+import HeaderDashboard from '../../components/Header-dashboard.astro';
+import Sidebar from '../../components/Sidebar.astro';
+import '../../styles/global.css';
+
+// Inicializa la base de datos al cargar la página
+await initializeDatabase().catch(err => console.error("Error al inicializar DB desde settings.astro:", err));
+
+const JWT_SECRET = '0402Dionel.*'; 
+
+let username = 'Usuario';
+let userEmail = ''; // Añadido para pasar el email al cliente
+let userId: number | null = null;
+let activeCompanyId: number | null = null;
+let activeCompanyName: string = 'Sin Empresa';
+let userCompanies: any[] = []; 
+
+try {
+  const token = Astro.cookies.get('auth_token')?.value;
+
+  if (!token) {
+    return Astro.redirect('/login');
+  }
+
+  const decoded = verify(token, JWT_SECRET);
+  if (typeof decoded === 'object' && decoded !== null) {
+    username = decoded.username || 'Usuario';
+    userId = decoded.userId as number;
+    userEmail = decoded.email || ''; // Obtener email del token si está disponible
+  } else {
+    console.error("Token decodificado en settings.astro no es un objeto:", decoded);
+    return Astro.redirect('/login');
+  }
+
+  const db = await initializeDatabase(); 
+
+  if (userId) {
+    userCompanies = await db.all(
+        `SELECT c.id, c.company_name, ucr.role
+         FROM companies c
+         JOIN user_company_roles ucr ON c.id = ucr.company_id
+         WHERE ucr.user_id = ?`,
+        userId
+    );
+  }
+
+  const activeCompanyCookie = Astro.cookies.get('active_company_id')?.value;
+  if (activeCompanyCookie && userId) {
+      const companyInfo = await db.get(
+          `SELECT c.id, c.company_name FROM companies c JOIN user_company_roles ucr ON c.id = ucr.company_id WHERE c.id = ? AND ucr.user_id = ?`,
+          activeCompanyCookie,
+          userId
+      );
+      if (companyInfo) {
+          activeCompanyId = companyInfo.id;
+          activeCompanyName = companyInfo.company_name;
+      } else {
+          console.warn("Empresa activa en cookie no válida para el usuario. Limpiando cookie y redirigiendo.");
+          Astro.cookies.set('active_company_id', '', { expires: new Date(0), path: '/' }); 
+          return Astro.redirect('/dashboard/companies');
+      }
+  }
+
+  if (activeCompanyId === null && userCompanies.length > 0) {
+      console.warn("No hay empresa activa seleccionada. Redirigiendo a /dashboard/companies.");
+      return Astro.redirect('/dashboard/companies');
+  } else if (activeCompanyId === null && userCompanies.length === 0) {
+      console.warn("El usuario no tiene empresas. Redirigiendo a /dashboard/companies para crear una.");
+      return Astro.redirect('/dashboard/companies');
+  }
+
+} catch (error: unknown) {
+  if (error instanceof Error) {
+    console.error("Error en settings.astro (data fetching/auth):", error.message);
+  } else {
+    console.error("Error desconocido en settings.astro (data fetching/auth):", error);
+  }
+  return Astro.redirect('/login');
+}
+---
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuración de Cuenta | Contabilito</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Iconos de Lucide (CDN) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* Estilos base para el switch (más estéticos) */
+        .switch-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            width: 100%;
+            padding: 0.5rem 0;
+        }
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 28px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #cbd5e0; /* gray-300 */
+            -webkit-transition: .4s;
+            transition: .4s;
+            border-radius: 28px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            -webkit-transition: .4s;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: #2563eb; /* blue-600 */
+        }
+
+        input:focus + .slider {
+            box-shadow: 0 0 1px #2563eb;
+        }
+
+        input:checked + .slider:before {
+            -webkit-transform: translateX(22px); /* Ajustado para 50px de ancho */
+            -ms-transform: translateX(22px);
+            transform: translateX(22px);
+        }
+
+        /* Estilos para el modo oscuro (más completos) */
+        html.dark {
+            background-color: #1a202c; /* Fondo gris oscuro */
+            color: #e2e8f0; /* Texto gris claro */
+        }
+        html.dark .bg-white {
+            background-color: #2d3748; /* Fondo de tarjeta más oscuro */
+        }
+        html.dark .shadow-2xl {
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.75); /* Sombra más pronunciada en oscuro */
+        }
+        html.dark .border-gray-200 {
+            border-color: #4a5568;
+        }
+        html.dark .text-gray-900 {
+            color: #e2e8f0;
+        }
+        html.dark .text-gray-700 {
+            color: #a0aec0;
+        }
+        html.dark .text-gray-800 {
+            color: #cbd5e0;
+        }
+        html.dark .text-blue-700 {
+            color: #90cdf4;
+        }
+        html.dark .text-green-700 {
+            color: #9ae6b4;
+        }
+        html.dark .text-red-700 {
+            color: #feb2b2;
+        }
+        html.dark .bg-gray-100 {
+            background-color: #2d3748;
+        }
+        html.dark .bg-gray-50 {
+            background-color: #2d3748;
+        }
+        html.dark .border-gray-300 {
+            border-color: #4a5568;
+        }
+        html.dark .focus\\:border-blue-500 {
+            border-color: #63b3ed;
+        }
+        html.dark .focus\\:ring-blue-500 {
+            --tw-ring-color: #63b3ed;
+        }
+        html.dark .bg-blue-600 {
+            background-color: #3182ce;
+        }
+        html.dark .hover\\:bg-blue-700:hover {
+            background-color: #2b6cb0;
+        }
+        html.dark .bg-red-600 {
+            background-color: #e53e3e;
+        }
+        html.dark .hover\\:bg-red-700:hover {
+            background-color: #c53030;
+        }
+        html.dark .bg-red-50 {
+            background-color: #742a2a;
+        }
+        html.dark .bg-green-100 {
+            background-color: #276749;
+        }
+        html.dark .bg-red-100 {
+            background-color: #742a2a;
+        }
+        html.dark .bg-blue-100 {
+            background-color: #2a4365;
+        }
+        html.dark .text-gray-600 {
+            color: #cbd5e0;
+        }
+        html.dark .text-gray-300 {
+            color: #a0aec0;
+        }
+        html.dark .text-gray-400 {
+            color: #718096;
+        }
+        html.dark .text-gray-500 {
+            color: #718096;
+        }
+        html.dark .text-red-200 {
+            color: #fc8181;
+        }
+        html.dark .text-red-300 {
+            color: #e53e3e;
+        }
+        html.dark .text-blue-800 {
+            color: #90cdf4;
+        }
+        html.dark .text-green-900 {
+            color: #68d391;
+        }
+        html.dark .text-red-900 {
+            color: #fc8181;
+        }
+        html.dark .text-gray-100 {
+            color: #f7fafc;
+        }
+        html.dark .bg-gray-700 {
+            background-color: #4a5568;
+        }
+        html.dark .bg-gray-800 {
+            background-color: #2d3748;
+        }
+        html.dark .bg-gray-600 {
+            background-color: #4a5568;
+        }
+        html.dark .hover\\:bg-gray-100:hover {
+            background-color: #4a5568;
+        }
+        html.dark .hover\\:bg-blue-50:hover {
+            background-color: #2a4365;
+        }
+        html.dark .bg-blue-50 {
+            background-color: #2a4365;
+        }
+        html.dark .font-semibold {
+            font-weight: 600;
+        }
+        html.dark .text-blue-500 {
+            color: #63b3ed;
+        }
+        html.dark .text-blue-600 {
+            color: #4299e1;
+        }
+        html.dark .text-green-600 {
+            color: #68d391;
+        }
+        html.dark .text-red-600 {
+            color: #fc8181;
+        }
+        html.dark .bg-gray-200 {
+            background-color: #4a5568;
+        }
+        html.dark .hover\\:bg-gray-300:hover {
+            background-color: #718096;
+        }
+        html.dark .border-red-200 {
+            border-color: #fc8181;
+        }
+        html.dark .border-red-700 {
+            border-color: #c53030;
+        }
+        html.dark .bg-red-900 {
+            background-color: #63171b;
+        }
+        /* Estilos para los mensajes de feedback */
+        .message-success {
+            background-color: #d1fae5; /* green-100 */
+            color: #065f46; /* green-700 */
+        }
+        .message-error {
+            background-color: #fee2e2; /* red-100 */
+            color: #b91c1c; /* red-700 */
+        }
+        .message-info {
+            background-color: #e0f2fe; /* blue-100 */
+            color: #1d4ed8; /* blue-700 */
+        }
+        html.dark .message-success {
+            background-color: #10b981; /* green-500 */
+            color: #ecfdf5; /* green-50 */
+        }
+        html.dark .message-error {
+            background-color: #ef4444; /* red-500 */
+            color: #fef2f2; /* red-50 */
+        }
+        html.dark .message-info {
+            background-color: #3b82f6; /* blue-500 */
+            color: #eff6ff; /* blue-50 */
+        }
+    </style>
+</head>
+<body class="font-poppins bg-gray-100 min-h-screen flex flex-col">
+    <HeaderDashboard 
+        activeCompanyId={activeCompanyId} 
+        activeCompanyName={activeCompanyName} 
+        userCompanies={userCompanies}
+    />
+
+    <div class="flex flex-grow pt-[60px]">
+        <Sidebar />
+
+        <main class="flex-grow p-8 ml-48">
+            <div class="w-full max-w-6xl mx-auto space-y-8">
+                <!-- Hero Section for Account Overview -->
+                <section class="bg-gradient-to-r from-blue-600 to-purple-700 text-white p-8 rounded-2xl shadow-xl flex flex-col md:flex-row items-center justify-between animate-fade-in-down">
+                    <div class="text-center md:text-left mb-4 md:mb-0">
+                        <h1 class="text-4xl font-extrabold mb-2">Hola, {username}!</h1>
+                        <p class="text-lg opacity-90">Gestiona tu cuenta y personaliza tu experiencia en Contabilito.</p>
+                        <p class="text-sm opacity-70 mt-1">ID de Usuario: <span class="font-mono">{userId || 'N/A'}</span></p>
+                    </div>
+                    <div class="flex items-center space-x-3">
+                        <i data-lucide="building" class="h-8 w-8 text-blue-200"></i>
+                        <div class="text-right">
+                            <p class="text-xl font-semibold">Empresa Activa:</p>
+                            <p class="text-2xl font-bold">{activeCompanyName}</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Settings Sections Grid -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    <!-- Perfil Card -->
+                    <div class="bg-white p-8 rounded-2xl shadow-lg border border-gray-200 transform hover:scale-[1.01] transition-transform duration-200 ease-in-out">
+                        <div class="flex items-center mb-6 text-gray-800">
+                            <i data-lucide="user" class="h-8 w-8 mr-3 text-blue-600"></i>
+                            <h2 class="text-2xl font-bold">Información del Perfil</h2>
+                        </div>
+                        <form id="profile-form" class="space-y-5">
+                            <div>
+                                <label for="username-input" class="block text-sm font-medium text-gray-700 mb-1">Nombre de Usuario</label>
+                                <input type="text" id="username-input" name="username" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-3 bg-gray-50 text-gray-900" value={username} />
+                            </div>
+                            <div>
+                                <label for="email-input" class="block text-sm font-medium text-gray-700 mb-1">Correo Electrónico</label>
+                                <input type="email" id="email-input" name="email" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-3 bg-gray-50 text-gray-900" value={userEmail} />
+                            </div>
+                            <div id="profile-message" class="hidden flex items-center p-3 rounded-md text-sm"></div>
+                            <button type="submit" id="save-profile-btn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg">
+                                Guardar Cambios
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Seguridad Card -->
+                    <div class="bg-white p-8 rounded-2xl shadow-lg border border-gray-200 transform hover:scale-[1.01] transition-transform duration-200 ease-in-out">
+                        <div class="flex items-center mb-6 text-gray-800">
+                            <i data-lucide="lock" class="h-8 w-8 mr-3 text-purple-600"></i>
+                            <h2 class="text-2xl font-bold">Seguridad</h2>
+                        </div>
+                        <form id="password-form" class="space-y-5">
+                            <div>
+                                <label for="current-password-input" class="block text-sm font-medium text-gray-700 mb-1">Contraseña Actual</label>
+                                <input type="password" id="current-password-input" name="currentPassword" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-3 bg-gray-50 text-gray-900" />
+                            </div>
+                            <div>
+                                <label for="new-password-input" class="block text-sm font-medium text-gray-700 mb-1">Nueva Contraseña</label>
+                                <input type="password" id="new-password-input" name="newPassword" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-3 bg-gray-50 text-gray-900" />
+                            </div>
+                            <div>
+                                <label for="confirm-new-password-input" class="block text-sm font-medium text-gray-700 mb-1">Confirmar Nueva Contraseña</label>
+                                <input type="password" id="confirm-new-password-input" name="confirmNewPassword" class="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 p-3 bg-gray-50 text-gray-900" />
+                            </div>
+                            <div id="password-message" class="hidden flex items-center p-3 rounded-md text-sm"></div>
+                            <button type="submit" id="change-password-btn" class="w-full bg-purple-600 hover:bg-purple-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg">
+                                Cambiar Contraseña
+                            </button>
+                        </form>
+                    </div>
+
+                    <!-- Notificaciones Card -->
+                    <div class="bg-white p-8 rounded-2xl shadow-lg border border-gray-200 transform hover:scale-[1.01] transition-transform duration-200 ease-in-out">
+                        <div class="flex items-center mb-6 text-gray-800">
+                            <i data-lucide="bell" class="h-8 w-8 mr-3 text-green-600"></i>
+                            <h2 class="text-2xl font-bold">Preferencias de Notificación</h2>
+                        </div>
+                        <div class="space-y-5">
+                            <div class="switch-container">
+                                <label for="email-notifications-switch" class="text-gray-700 text-base">
+                                    Recibir notificaciones por correo electrónico
+                                </label>
+                                <label class="switch">
+                                    <input type="checkbox" id="email-notifications-switch">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div class="switch-container">
+                                <label for="in-app-notifications-switch" class="text-gray-700 text-base">
+                                    Recibir notificaciones dentro de la aplicación
+                                </label>
+                                <label class="switch">
+                                    <input type="checkbox" id="in-app-notifications-switch">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <div id="notification-message" class="hidden flex items-center p-3 rounded-md text-sm"></div>
+                            <button type="button" id="save-notifications-btn" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg">
+                                Guardar Preferencias
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Gestión de Datos Card -->
+                    <div class="bg-white p-8 rounded-2xl shadow-lg border border-gray-200 transform hover:scale-[1.01] transition-transform duration-200 ease-in-out">
+                        <div class="flex items-center mb-6 text-gray-800">
+                            <i data-lucide="download" class="h-8 w-8 mr-3 text-orange-600"></i>
+                            <h2 class="text-2xl font-bold">Gestión de Datos</h2>
+                        </div>
+                        <div class="space-y-5">
+                            <div class="p-4 bg-orange-50 rounded-lg border border-orange-200 shadow-sm">
+                                <h4 class="text-lg font-semibold text-orange-800 mb-2">Exportar Datos</h4>
+                                <p class="text-orange-700 text-sm mb-4">
+                                    Descarga una copia de todas tus transacciones y cuentas en formato JSON.
+                                </p>
+                                <button type="button" id="export-data-btn" class="w-full bg-orange-600 hover:bg-orange-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg">
+                                    <i data-lucide="download" class="mr-2 h-4 w-4 inline-block align-middle"></i> Exportar Datos
+                                </button>
+                            </div>
+
+                            <div class="p-4 bg-gray-50 rounded-lg border border-gray-200 shadow-sm opacity-70 cursor-not-allowed">
+                                <h4 class="text-lg font-semibold text-gray-800 mb-2">Importar Datos (Próximamente)</h4>
+                                <p class="text-gray-600 text-sm mb-4">
+                                    Sube tus datos financieros desde un archivo CSV.
+                                </p>
+                                <button type="button" disabled class="w-full bg-gray-400 text-white font-semibold py-3 px-4 rounded-lg">
+                                    Subir Archivo
+                                </button>
+                            </div>
+
+                            <div class="p-4 bg-red-50 rounded-lg border border-red-200 shadow-sm">
+                                <h4 class="text-lg font-semibold text-red-800 mb-2">Eliminar Cuenta</h4>
+                                <p class="text-red-700 text-sm mb-4">
+                                    Esta acción es irreversible y eliminará permanentemente todos tus datos y tu cuenta.
+                                </p>
+                                <button type="button" id="delete-account-trigger-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-semibold py-3 px-4 rounded-lg transition-colors duration-200 shadow-md hover:shadow-lg">
+                                    <i data-lucide="trash-2" class="mr-2 h-4 w-4 inline-block align-middle"></i> Eliminar Cuenta
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Apariencia Card -->
+                    <div class="bg-white p-8 rounded-2xl shadow-lg border border-gray-200 transform hover:scale-[1.01] transition-transform duration-200 ease-in-out">
+                        <div class="flex items-center mb-6 text-gray-800">
+                            <i data-lucide="palette" class="h-8 w-8 mr-3 text-teal-600"></i>
+                            <h2 class="text-2xl font-bold">Apariencia</h2>
+                        </div>
+                        <div class="space-y-5">
+                            <div class="switch-container">
+                                <label for="dark-mode-toggle-switch" class="text-gray-700 text-base">
+                                    Habilitar Modo Oscuro
+                                </label>
+                                <label class="switch">
+                                    <input type="checkbox" id="dark-mode-toggle-switch">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                            <p class="text-sm text-gray-500 mt-2">
+                                Cambia el tema visual de la aplicación entre claro y oscuro.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Delete Account Confirmation Modal -->
+    <div id="delete-account-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 hidden transition-opacity duration-300 opacity-0">
+        <div class="bg-white dark:bg-gray-800 p-8 rounded-xl shadow-2xl border border-gray-200 dark:border-gray-700 w-full max-w-md transform scale-95 transition-transform duration-300">
+            <h3 class="text-2xl font-bold text-red-700 dark:text-red-300 mb-4 text-center">Confirmar Eliminación de Cuenta</h3>
+            <p class="text-gray-700 dark:text-gray-400 mb-6 text-center">
+                ¿Estás absolutamente seguro de que deseas eliminar tu cuenta? Esta acción no se puede deshacer y eliminará permanentemente todos tus datos.
+            </p>
+            <div id="delete-account-modal-message" class="hidden flex items-center p-3 rounded-md text-sm mb-4"></div>
+            <div class="flex flex-col sm:flex-row sm:justify-center gap-4 mt-6">
+                <button type="button" id="cancel-delete-btn" class="bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-semibold py-3 px-6 rounded-lg transition-colors duration-200 shadow-md">
+                    Cancelar
+                </button>
+                <button type="button" id="confirm-delete-btn" class="bg-red-600 hover:bg-red-700 text-white font-semibold py-3 px-6 rounded-lg transition-colors duration-200 shadow-md">
+                    Sí, Eliminar Mi Cuenta
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script is:inline>
+        // Lucide icons replacement (run after DOM is loaded)
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        });
+
+        // --- DOM Elements ---
+        // Profile Form Elements
+        const profileForm = document.getElementById('profile-form');
+        const usernameInput = document.getElementById('username-input');
+        const emailInput = document.getElementById('email-input');
+        const saveProfileBtn = document.getElementById('save-profile-btn');
+        const profileMessageDiv = document.getElementById('profile-message');
+
+        // Password Form Elements
+        const passwordForm = document.getElementById('password-form');
+        const currentPasswordInput = document.getElementById('current-password-input');
+        const newPasswordInput = document.getElementById('new-password-input');
+        const confirmNewPasswordInput = document.getElementById('confirm-new-password-input');
+        const changePasswordBtn = document.getElementById('change-password-btn');
+        const passwordMessageDiv = document.getElementById('password-message');
+
+        // Notification Elements
+        const emailNotificationsSwitch = document.getElementById('email-notifications-switch');
+        const inAppNotificationsSwitch = document.getElementById('in-app-notifications-switch');
+        const saveNotificationsBtn = document.getElementById('save-notifications-btn');
+        const notificationMessageDiv = document.getElementById('notification-message');
+
+        // Data Management Elements
+        const exportDataBtn = document.getElementById('export-data-btn');
+        const deleteAccountTriggerBtn = document.getElementById('delete-account-trigger-btn');
+
+        // Delete Account Modal Elements
+        const deleteAccountModal = document.getElementById('delete-account-modal');
+        const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
+        const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
+        const deleteAccountModalMessageDiv = document.getElementById('delete-account-modal-message');
+
+        // Appearance Elements
+        const darkModeToggleSwitch = document.getElementById('dark-mode-toggle-switch');
+
+        // --- Initial Data from Astro Props ---
+        // Astro.props are available directly in is:inline scripts
+        const initialUsername = "{@html JSON.stringify(Astro.props.username)}";
+        const initialUserEmail = "{@html JSON.stringify(Astro.props.userEmail)}"; // Get email
+        const initialUserId = "{@html JSON.stringify(Astro.props.userId)}";
+        const initialActiveCompanyName = "{@html JSON.stringify(Astro.props.activeCompanyName)}";
+
+        // Set initial values for inputs
+        usernameInput.value = JSON.parse(initialUsername);
+        emailInput.value = JSON.parse(initialUserEmail); // Set initial email
+
+        // --- Utility Functions ---
+
+        /**
+         * Muestra un mensaje de feedback al usuario.
+         * @param {HTMLElement} element El elemento DIV donde se mostrará el mensaje.
+         * @param {string} type 'success' o 'error' o 'info'.
+         * @param {string} message El texto del mensaje.
+         */
+        function showMessage(element, type, message) {
+            element.classList.remove('hidden', 'message-success', 'message-error', 'message-info');
+            element.innerHTML = ''; // Limpiar iconos anteriores
+            let iconHtml = '';
+            
+            if (type === 'success') {
+                iconHtml = '<i data-lucide="check-circle" class="h-5 w-5 mr-2"></i>';
+                element.classList.add('message-success');
+            } else if (type === 'error') {
+                iconHtml = '<i data-lucide="x-circle" class="h-5 w-5 mr-2"></i>';
+                element.classList.add('message-error');
+            } else if (type === 'info') {
+                iconHtml = '<i data-lucide="alert-circle" class="h-5 w-5 mr-2"></i>';
+                element.classList.add('message-info');
+            }
+
+            element.innerHTML = `${iconHtml}<span>${message}</span>`;
+            element.classList.remove('hidden');
+
+            // Re-render Lucide icons if dynamically added
+            if (typeof lucide !== 'undefined') {
+                lucide.createIcons();
+            }
+        }
+
+        /**
+         * Oculta un mensaje de feedback.
+         * @param {HTMLElement} element El elemento DIV del mensaje.
+         */
+        function hideMessage(element) {
+            element.classList.add('hidden');
+            element.innerHTML = '';
+        }
+
+        // --- Profile Form Submission ---
+        profileForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideMessage(profileMessageDiv);
+            saveProfileBtn.disabled = true;
+            saveProfileBtn.textContent = 'Guardando...';
+
+            const newUsername = usernameInput.value;
+            const newEmail = emailInput.value;
+
+            try {
+                const response = await fetch('/api/settings/profile', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ username: newUsername, email: newEmail }),
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showMessage(profileMessageDiv, 'success', result.message || 'Perfil actualizado exitosamente.');
+                } else {
+                    showMessage(profileMessageDiv, 'error', result.message || 'Error al actualizar el perfil.');
+                }
+            } catch (error) {
+                console.error('Error de red al actualizar perfil:', error);
+                showMessage(profileMessageDiv, 'error', 'Error de red al actualizar el perfil.');
+            } finally {
+                saveProfileBtn.disabled = false;
+                saveProfileBtn.textContent = 'Guardar Cambios';
+            }
+        });
+
+        // --- Password Form Submission ---
+        passwordForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            hideMessage(passwordMessageDiv);
+            changePasswordBtn.disabled = true;
+            changePasswordBtn.textContent = 'Cambiando...';
+
+            const currentPassword = currentPasswordInput.value;
+            const newPassword = newPasswordInput.value;
+            const confirmNewPassword = confirmNewPasswordInput.value;
+
+            if (newPassword !== confirmNewPassword) {
+                showMessage(passwordMessageDiv, 'error', 'Las nuevas contraseñas no coinciden.');
+                changePasswordBtn.disabled = false;
+                changePasswordBtn.textContent = 'Cambiar Contraseña';
+                return;
+            }
+            if (newPassword.length < 6) { // Basic validation
+                showMessage(passwordMessageDiv, 'error', 'La nueva contraseña debe tener al menos 6 caracteres.');
+                changePasswordBtn.disabled = false;
+                changePasswordBtn.textContent = 'Cambiar Contraseña';
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/settings/password', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ currentPassword, newPassword }),
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showMessage(passwordMessageDiv, 'success', result.message || 'Contraseña cambiada exitosamente.');
+                    passwordForm.reset(); // Clear form
+                } else {
+                    showMessage(passwordMessageDiv, 'error', result.message || 'Error al cambiar la contraseña.');
+                }
+            } catch (error) {
+                console.error('Error de red al cambiar contraseña:', error);
+                showMessage(passwordMessageDiv, 'error', 'Error de red al cambiar la contraseña.');
+            } finally {
+                changePasswordBtn.disabled = false;
+                changePasswordBtn.textContent = 'Cambiar Contraseña';
+            }
+        });
+
+        // --- Notification Settings Logic ---
+
+        // Function to load notification settings from API
+        async function loadNotificationSettings() {
+            try {
+                const response = await fetch('/api/settings/notifications');
+                if (response.ok) {
+                    const data = await response.json();
+                    emailNotificationsSwitch.checked = data.emailNotifications;
+                    inAppNotificationsSwitch.checked = data.inAppNotifications;
+                } else {
+                    console.error('Error al cargar preferencias de notificación:', await response.text());
+                    showMessage(notificationMessageDiv, 'error', 'Error al cargar preferencias de notificación.');
+                }
+            } catch (error) {
+                console.error('Error de red al cargar preferencias de notificación:', error);
+                showMessage(notificationMessageDiv, 'error', 'Error de red al cargar preferencias de notificación.');
+            }
+        }
+
+        // Event listener for saving notification settings
+        saveNotificationsBtn.addEventListener('click', async () => {
+            hideMessage(notificationMessageDiv);
+            saveNotificationsBtn.disabled = true;
+            saveNotificationsBtn.textContent = 'Guardando...';
+
+            const emailEnabled = emailNotificationsSwitch.checked;
+            const inAppEnabled = inAppNotificationsSwitch.checked;
+
+            try {
+                const response = await fetch('/api/settings/notifications', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ emailNotifications: emailEnabled, inAppNotifications: inAppEnabled }),
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showMessage(notificationMessageDiv, 'success', result.message || 'Preferencias de notificación guardadas.');
+                } else {
+                    showMessage(notificationMessageDiv, 'error', result.message || 'Error al guardar preferencias de notificación.');
+                }
+            } catch (error) {
+                console.error('Error de red al guardar preferencias de notificación:', error);
+                showMessage(notificationMessageDiv, 'error', 'Error de red al guardar preferencias de notificación.');
+            } finally {
+                saveNotificationsBtn.disabled = false;
+                saveNotificationsBtn.textContent = 'Guardar Preferencias';
+            }
+        });
+
+        // --- Data Management Logic ---
+
+        exportDataBtn.addEventListener('click', async () => {
+            showMessage(notificationMessageDiv, 'info', 'Iniciando exportación de datos...'); // Usar el div de notificaciones para info temporal
+            try {
+                const response = await fetch('/api/data/export'); 
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = 'contabilito_datos.json'; // O .csv
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    showMessage(notificationMessageDiv, 'success', 'Datos exportados exitosamente.');
+                } else {
+                    const errorText = await response.text();
+                    showMessage(notificationMessageDiv, 'error', `Error al exportar datos: ${errorText}`);
+                }
+            } catch (error) {
+                console.error('Error de red al exportar datos:', error);
+                showMessage(notificationMessageDiv, 'error', 'Error de red al exportar datos.');
+            }
+        });
+
+        // --- Delete Account Modal Logic ---
+        deleteAccountTriggerBtn.addEventListener('click', () => {
+            deleteAccountModal.classList.remove('hidden');
+            // Añadir animación de entrada
+            setTimeout(() => {
+                deleteAccountModal.style.opacity = '1';
+                deleteAccountModal.querySelector('div').style.transform = 'scale(1)';
+            }, 10); // Pequeño retraso para que la transición se aplique
+            hideMessage(deleteAccountModalMessageDiv); // Clear previous messages
+        });
+
+        cancelDeleteBtn.addEventListener('click', () => {
+            // Añadir animación de salida
+            deleteAccountModal.style.opacity = '0';
+            deleteAccountModal.querySelector('div').style.transform = 'scale(0.95)';
+            setTimeout(() => {
+                deleteAccountModal.classList.add('hidden');
+            }, 300); // Esperar a que termine la transición
+        });
+
+        confirmDeleteBtn.addEventListener('click', async () => {
+            hideMessage(deleteAccountModalMessageDiv);
+            confirmDeleteBtn.disabled = true;
+            confirmDeleteBtn.textContent = 'Eliminando...';
+
+            try {
+                const response = await fetch('/api/settings/delete-account', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    showMessage(deleteAccountModalMessageDiv, 'success', result.message || 'Cuenta eliminada exitosamente. Redirigiendo...');
+                    setTimeout(() => {
+                        window.location.href = '/login'; // Redirect after successful deletion
+                    }, 2000);
+                } else {
+                    showMessage(deleteAccountModalMessageDiv, 'error', result.message || 'Error al eliminar la cuenta.');
+                }
+            } catch (error) {
+                console.error('Error de red al eliminar cuenta:', error);
+                showMessage(deleteAccountModalMessageDiv, 'error', 'Error de red al eliminar la cuenta.');
+            } finally {
+                confirmDeleteBtn.disabled = false;
+                confirmDeleteBtn.textContent = 'Sí, Eliminar Mi Cuenta';
+            }
+        });
+
+        // --- Dark Mode Toggle Logic ---
+        darkModeToggleSwitch.addEventListener('change', () => {
+            if (darkModeToggleSwitch.checked) {
+                document.documentElement.classList.add('dark');
+                localStorage.setItem('theme', 'dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+                localStorage.setItem('theme', 'light'); // Guardar 'light' explícitamente
+            }
+        });
+
+        // Apply theme on initial load
+        document.addEventListener('DOMContentLoaded', () => {
+            if (localStorage.getItem('theme') === 'dark') {
+                document.documentElement.classList.add('dark');
+                darkModeToggleSwitch.checked = true;
+            } else {
+                document.documentElement.classList.remove('dark');
+                darkModeToggleSwitch.checked = false;
+            }
+            // Load notification settings after initial DOM and theme are set
+            loadNotificationSettings();
+        });
+
+    </script>
+</body>
+</html>

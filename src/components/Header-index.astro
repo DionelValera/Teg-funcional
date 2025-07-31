@@ -1,0 +1,89 @@
+---
+// src/components/Header-index.astro
+import pkg from 'jsonwebtoken';
+const { verify } = pkg;
+import '../styles/global.css'; // Asegúrate de que esto esté presente
+
+// La misma clave secreta que usas en login.js y dashboard.astro
+const JWT_SECRET = '0402Dionel.*'; // ¡DEBE SER LA MISMA!
+
+let isLoggedIn = false;
+let username = '';
+
+try {
+  const token = Astro.cookies.get('auth_token')?.value;
+  if (token) {
+    const decoded = verify(token, JWT_SECRET);
+    if (typeof decoded === 'object' && decoded !== null) {
+      isLoggedIn = true;
+      username = decoded.username || '';
+    } else {
+      console.log("Token decodificado no es un objeto:", decoded);
+      isLoggedIn = false;
+    }
+  }
+} catch (error: unknown) {
+  if (error instanceof Error) {
+    console.log("No autenticado o token inválido:", error.message);
+  } else {
+    console.log("No autenticado o token inválido:", error);
+  }
+  isLoggedIn = false;
+}
+---
+
+<header class="bg-white backdrop-blur-md top-0 left-0 right-0 sm:px-10 ml-20 mt-5 rounded-2xl mr-20 text-black fixed shadow-md py-4 px-6 flex justify-between items-center z-50">  
+  
+    
+    <div class="flex items-center">
+      
+      <a href="/" class="text-2xl flex-grow basis-0 hover:scale-105 transition-all duration-300 font-bold flex items-center group">
+        Contabilito
+      </a>
+    </div>
+
+    <nav class="justify-center items-center hidden md:flex  space-x-6 text-lg font-medium">
+        {isLoggedIn ? (
+            <>
+                <a href="/dashboard" class="hover:text-blue-800 hover:scale-105 transition-all duration-300">Dashboard</a>
+                <span class=" mr-2">Hola, {username || 'usuario'}</span>
+                <button id="logoutButtonHeader" class="bg-blue-600 text-white justify-end px-4 py-2 rounded-md hover:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-blue-700 focus:ring-blue-500 hover:scale-105 transition-all duration-300  cursor-pointer">Cerrar Sesión</button>
+            </>
+        ) : (
+            <>
+                <a href="/login" class=" hover:text-blue-950 hover:scale-105 transition-all duration-200">Iniciar Sesión</a>
+                <a href="/register" class="bg-blue-700 text-white px-4 py-2 rounded-xl hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-blue-700 focus:ring-blue-500 hover:scale-105 transition-all duration-300 ">Regístrate</a>
+            </>
+        )}
+    </nav>
+
+    <div class="md:hidden">
+        <button id="mobileMenuButton" class="text-white felx-grow basis-0 hover:text-blue-200 focus:outline-none">
+            <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+        </button>
+      </div>
+</header>
+
+<script is:inline>
+  const logoutButtonHeader = document.getElementById('logoutButtonHeader');
+  if (logoutButtonHeader) {
+    logoutButtonHeader.addEventListener('click', async () => {
+      try {
+        const response = await fetch('/api/logout', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (response.ok) {
+          window.location.href = '/login';
+        } else {
+          console.error('Error al cerrar sesión desde el header:', await response.json());
+          alert('Hubo un problema al cerrar sesión. Intenta de nuevo.');
+        }
+      } catch (error) {
+        console.error('Error de red al cerrar sesión desde el header:', error);
+        alert('No se pudo conectar al servidor para cerrar sesión.');
+      }
+    });
+  }
+</script>

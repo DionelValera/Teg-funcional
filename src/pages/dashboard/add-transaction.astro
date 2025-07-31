@@ -1,0 +1,346 @@
+---
+// src/pages/dashboard/add-transaction.astro
+import { initializeDatabase } from '../../db/db.js';
+import pkg from 'jsonwebtoken';
+const { verify } = pkg;
+import HeaderDashboard from '../../components/Header-dashboard.astro';
+import Sidebar from '../../components/Sidebar.astro';
+import '../../styles/global.css';
+
+// Inicializa la base de datos al cargar la página
+await initializeDatabase().catch(err => console.error("Error al inicializar DB desde add-transaction.astro:", err));
+
+const JWT_SECRET = '0402Dionel.*'; 
+
+let username = 'Usuario';
+let userId = null;
+let activeCompanyId: number | null = null;
+let activeCompanyName: string = 'Sin Empresa';
+let accountsWithBalances: { id: number; account_name: string; initial_balance: number; current_balance: number; }[] = []; 
+let userCompanies: any[] = []; // ¡NUEVO! Para almacenar todas las empresas del usuario
+
+try {
+  const token = Astro.cookies.get('auth_token')?.value;
+
+  if (!token) {
+    return Astro.redirect('/login');
+  }
+
+  const decoded = verify(token, JWT_SECRET);
+  if (typeof decoded === 'object' && decoded !== null) {
+    username = decoded.username || 'Usuario';
+    userId = decoded.userId;
+  } else {
+    console.error("Token decodificado en add-transaction.astro no es un objeto:", decoded);
+    return Astro.redirect('/login');
+  }
+
+  const db = await initializeDatabase(); 
+
+  // ¡NUEVO! Obtener TODAS las empresas a las que el usuario tiene acceso
+  userCompanies = await db.all(
+      `SELECT c.id, c.company_name, ucr.role
+       FROM companies c
+       JOIN user_company_roles ucr ON c.id = ucr.company_id
+       WHERE ucr.user_id = ?`,
+      userId
+  );
+
+  // Lógica para determinar la empresa activa
+  const activeCompanyCookie = Astro.cookies.get('active_company_id')?.value;
+
+  if (activeCompanyCookie) {
+      const companyInfo = await db.get(
+          `SELECT c.id, c.company_name FROM companies c JOIN user_company_roles ucr ON c.id = ucr.company_id WHERE c.id = ? AND ucr.user_id = ?`,
+          activeCompanyCookie,
+          userId
+      );
+      if (companyInfo) {
+          activeCompanyId = companyInfo.id;
+          activeCompanyName = companyInfo.company_name;
+
+          // Cargar las cuentas con sus saldos para esta empresa activa
+          const fetchedAccounts = await db.all(
+              `SELECT
+                  a.id,
+                  a.account_name,
+                  a.initial_balance,
+                  COALESCE(SUM(CASE WHEN t.type = 'ingreso' THEN t.amount ELSE -t.amount END), 0) AS transactions_sum
+               FROM
+                  accounts a
+               LEFT JOIN
+                  transactions t ON a.id = t.account_id
+               WHERE
+                  a.company_id = ?
+               GROUP BY
+                  a.id, a.account_name, a.initial_balance, a.created_at
+               ORDER BY
+                  a.account_name ASC`, // Ordenar por nombre para el dropdown
+              activeCompanyId
+          );
+
+          // Calcular el saldo final para cada cuenta en JavaScript
+          accountsWithBalances = fetchedAccounts.map(account => ({
+              ...account,
+              current_balance: account.initial_balance + account.transactions_sum
+          }));
+          console.log('Astro: Cuentas cargadas con saldos para el formulario:', accountsWithBalances);
+
+      } else {
+          console.warn("Empresa activa en cookie no válida para el usuario. Redirigiendo a /dashboard/companies.");
+          Astro.cookies.set('active_company_id', '', { expires: new Date(0), path: '/' }); // Limpiar cookie inválida
+          return Astro.redirect('/dashboard/companies');
+      }
+  } else {
+      // Si no hay empresa activa y el usuario tiene empresas, redirigir a la página de empresas
+      if (userCompanies.length > 0) {
+          console.warn("No hay empresa activa seleccionada. Redirigiendo a /dashboard/companies.");
+          return Astro.redirect('/dashboard/companies');
+      } else {
+          // Si no tiene empresas, redirigir a la página de empresas para que cree una
+          console.warn("El usuario no tiene empresas. Redirigiendo a /dashboard/companies para crear una.");
+          return Astro.redirect('/dashboard/companies');
+      }
+  }
+
+} catch (error: unknown) {
+  if (error instanceof Error) {
+    console.error("Error en add-transaction.astro:", error.message);
+  } else {
+    console.error("Error en add-transaction.astro:", error);
+  }
+  return Astro.redirect('/login');
+}
+
+---
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Añadir Transacción | Contabilito</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="font-poppins bg-gray-100 min-h-screen flex flex-col" data-accounts={JSON.stringify(accountsWithBalances)}>
+    <HeaderDashboard 
+        activeCompanyId={activeCompanyId} 
+        activeCompanyName={activeCompanyName} 
+        userCompanies={userCompanies} {/* ¡IMPORTANTE! Pasar userCompanies */}
+    />
+
+    <div class="flex flex-grow pt-[60px]">
+        <Sidebar />
+
+        <main class="flex-grow p-8 ml-48">
+            <div class="bg-white rounded-2xl shadow-xl p-8 max-w-2xl w-full mx-auto">
+                <h1 class="text-3xl font-extrabold text-gray-900 mb-6 text-center">
+                    Añadir Nueva Transacción
+                </h1>
+                <p class="text-md text-gray-700 mb-6 text-center">
+                    Registra ingresos o gastos para tu empresa: <span class="font-semibold text-blue-700">{activeCompanyName}</span>
+                </p>
+
+                <form id="transactionForm" class="space-y-4">
+                    <!-- Tipo de Transacción: Ingreso/Gasto -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Tipo de Transacción</label>
+                        <div class="mt-1 flex space-x-4">
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="type" value="ingreso" class="form-radio text-blue-600" checked />
+                                <span class="ml-2 text-gray-800">Ingreso</span>
+                            </label>
+                            <label class="inline-flex items-center">
+                                <input type="radio" name="type" value="gasto" class="form-radio text-red-600" />
+                                <span class="ml-2 text-gray-800">Gasto</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- ¡CAMBIO DE ORDEN! Selección de Cuenta (Ahora antes de Cantidad) -->
+                    <div>
+                        <label for="accountId" class="block text-sm font-medium text-gray-700">Cuenta</label>
+                        <select
+                            id="accountId"
+                            name="accountId"
+                            required
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        >
+                            <option value="">Selecciona una cuenta</option>
+                            {accountsWithBalances.length === 0 && <option value="" disabled>No hay cuentas disponibles. Por favor, crea una en "Cuentas".</option>}
+                            {accountsWithBalances.map(account => {
+                                const formattedBalance = new Intl.NumberFormat('es-VE', { style: 'currency', currency: 'VES' }).format(account.current_balance);
+                                return <option value={account.id}>{account.account_name} | {formattedBalance}</option>;
+                            })}
+                        </select>
+                    </div>
+
+                    <!-- Cantidad (Ahora después de Selección de Cuenta) -->
+                    <div>
+                        <label for="amount" class="block text-sm font-medium text-gray-700">Cantidad</label>
+                        <input
+                            type="number"
+                            id="amount"
+                            name="amount"
+                            step="0.01"
+                            required
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                            placeholder="Ej: 1500.75"
+                        />
+                    </div>
+
+                    <!-- Descripción -->
+                    <div>
+                        <label for="description" class="block text-sm font-medium text-gray-700">Descripción</label>
+                        <textarea
+                            id="description"
+                            name="description"
+                            rows="3"
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                            placeholder="Ej: Pago de nómina mensual, Compra de material de oficina"
+                        ></textarea>
+                    </div>
+
+                    <!-- Categoría -->
+                    <div>
+                        <label for="category" class="block text-sm font-medium text-gray-700">Categoría</label>
+                        <input
+                            type="text"
+                            id="category"
+                            name="category"
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                            placeholder="Ej: Salario, Alquiler, Transporte"
+                        />
+                    </div>
+
+                    <!-- Fecha de Transacción -->
+                    <div>
+                        <label for="transactionDate" class="block text-sm font-medium text-gray-700">Fecha de Transacción</label>
+                        <input
+                            type="date"
+                            id="transactionDate"
+                            name="transactionDate"
+                            required
+                            class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                        />
+                    </div>
+
+                    <button
+                        type="submit"
+                        class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-200"
+                    >
+                        Registrar Transacción
+                    </button>
+
+                    <div id="feedback" class="mt-3 text-center text-sm font-medium"></div>
+                </form>
+            </div>
+        </main>
+    </div>
+
+    <script is:inline>
+        const transactionForm = document.getElementById('transactionForm');
+        const feedbackDiv = document.getElementById('feedback');
+        const accountSelect = document.getElementById('accountId'); 
+
+        // Leer los datos de las cuentas del atributo data-accounts del body
+        // Esto es lo que permite que accountsWithBalancesClient esté disponible en el cliente.
+        const accountsRawData = document.body.dataset.accounts;
+        const accountsWithBalancesClient = JSON.parse(accountsRawData).reduce((acc, account) => {
+            acc[account.id] = account;
+            return acc;
+        }, {});
+
+
+        // Establecer la fecha actual por defecto en el campo de fecha
+        const transactionDateInput = document.getElementById('transactionDate');
+        const today = new Date();
+        const yyyy = today.getFullYear();
+        const mm = String(today.getMonth() + 1).padStart(2, '0');
+        const dd = String(today.getDate()).padStart(2, '0');
+        transactionDateInput.value = `${yyyy}-${mm}-${dd}`;
+
+        transactionForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            feedbackDiv.textContent = 'Enviando transacción...';
+            feedbackDiv.className = 'mt-3 text-center text-sm font-medium text-blue-600';
+
+            const formData = new FormData(transactionForm);
+            const type = formData.get('type');
+            const amount = parseFloat(formData.get('amount'));
+            const description = formData.get('description');
+            const category = formData.get('category');
+            const transactionDate = formData.get('transactionDate');
+            const accountId = formData.get('accountId');
+
+            // Validaciones básicas
+            if (!type || isNaN(amount) || amount <= 0 || !transactionDate || !accountId) {
+                feedbackDiv.textContent = 'Por favor, completa todos los campos obligatorios (Tipo, Cantidad, Fecha y Cuenta).';
+                feedbackDiv.className = 'mt-3 text-center text-sm font-medium text-red-600';
+                return;
+            }
+            
+            if (!accountSelect || accountSelect.options.length === 0 || accountSelect.value === "") {
+                feedbackDiv.textContent = 'No hay cuentas disponibles o no has seleccionado una. Por favor, crea una en la sección "Cuentas" primero.';
+                feedbackDiv.className = 'mt-3 text-center text-sm font-medium text-red-600';
+                return;
+            }
+
+            // --- ESTA ES LA VALIDACIÓN DE SALDO QUE BUSCABAS Y AHORA FUNCIONARÁ ---
+            if (type === 'gasto') {
+                const selectedAccount = accountsWithBalancesClient[accountId];
+                if (selectedAccount && amount > selectedAccount.current_balance) {
+                    feedbackDiv.textContent = 'Usted no posee saldo en la cuenta seleccionada para poder registrar algún gasto.';
+                    feedbackDiv.className = 'mt-3 text-center text-sm font-medium text-red-600';
+                    return; // Detener el envío del formulario
+                }
+            }
+            // --- FIN DE LA VALIDACIÓN ---
+
+            const transaction = {
+                type,
+                amount,
+                description: description || null,
+                category: category || null,
+                transactionDate,
+                accountId: parseInt(accountId)
+            };
+            
+            console.log('add-transaction.astro Cliente: Datos de transacción a enviar:', transaction);
+
+            try {
+                const response = await fetch('/api/transactions/add', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(transaction)
+                });
+                
+                console.log('add-transaction.astro Cliente: Respuesta de la API recibida. Status:', response.status, 'OK:', response.ok);
+
+                const data = await response.json();
+                console.log('add-transaction.astro Cliente: Datos de respuesta de la API:', data);
+
+                if (response.ok) {
+                    feedbackDiv.textContent = data.message;
+                    feedbackDiv.className = 'mt-3 text-center text-sm font-medium text-green-600';
+                    transactionForm.reset(); // Limpiar el formulario
+                    transactionDateInput.value = `${yyyy}-${mm}-${dd}`; // Restablecer la fecha
+                    accountSelect.value = ""; // Restablecer el selector de cuenta
+                    // Opcional: Recargar la página o actualizar el saldo de la cuenta en el dropdown
+                    // window.location.reload(); 
+                } else {
+                    feedbackDiv.textContent = data.message || 'Error en la respuesta del servidor.';
+                    feedbackDiv.className = 'mt-3 text-center text-sm font-medium text-red-600';
+                    console.error('add-transaction.astro Cliente: Error en la respuesta del servidor:', data);
+                }
+            } catch (error) {
+                feedbackDiv.textContent = 'Error de red al registrar la transacción.';
+                feedbackDiv.className = 'mt-3 text-center text-sm font-medium text-red-600';
+                console.error('add-transaction.astro Cliente: Error en la solicitud fetch:', error);
+            }
+        });
+    </script>
+</body>
+</html>

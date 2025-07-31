@@ -1,0 +1,178 @@
+---
+// src/pages/dashboard/summary.astro
+import { initializeDatabase } from '../../db/db.js';
+import pkg from 'jsonwebtoken';
+const { verify } = pkg;
+import HeaderDashboard from '../../components/Header-dashboard.astro';
+import Sidebar from '../../components/Sidebar.astro';
+import '../../styles/global.css';
+
+// Inicializa la base de datos
+await initializeDatabase().catch(err => console.error("Error al inicializar DB desde summary.astro:", err));
+
+const JWT_SECRET = '0402Dionel.*'; 
+
+let username = 'Usuario';
+let userId = null;
+let activeCompanyId: number | null = null;
+let activeCompanyName: string = 'Sin Empresa';
+let userCompanies: any[] = []; // Para pasar a HeaderDashboard
+
+// Variables para almacenar los datos del resumen
+let netBalance: number = 0;
+let totalIncome: number = 0;
+let totalExpense: number = 0;
+
+try {
+  const token = Astro.cookies.get('auth_token')?.value;
+
+  if (!token) {
+    return Astro.redirect('/login');
+  }
+
+  const decoded = verify(token, JWT_SECRET);
+  if (typeof decoded === 'object' && decoded !== null) {
+    username = decoded.username || 'Usuario';
+    userId = decoded.userId;
+  } else {
+    console.error("Token decodificado en summary.astro no es un objeto:", decoded);
+    return Astro.redirect('/login');
+  }
+
+  const db = await initializeDatabase(); 
+
+  // Obtener TODAS las empresas a las que el usuario tiene acceso
+  userCompanies = await db.all(
+      `SELECT c.id, c.company_name, ucr.role
+       FROM companies c
+       JOIN user_company_roles ucr ON c.id = ucr.company_id
+       WHERE ucr.user_id = ?`,
+      userId
+  );
+
+  // Lógica para determinar la empresa activa
+  const activeCompanyCookie = Astro.cookies.get('active_company_id')?.value;
+  if (activeCompanyCookie) {
+      const companyInfo = await db.get(
+          `SELECT c.id, c.company_name FROM companies c JOIN user_company_roles ucr ON c.id = ucr.company_id WHERE c.id = ? AND ucr.user_id = ?`,
+          activeCompanyCookie,
+          userId
+      );
+      if (companyInfo) {
+          activeCompanyId = companyInfo.id;
+          activeCompanyName = companyInfo.company_name;
+
+          // Obtener datos del resumen para la empresa activa
+          // Por defecto, obtendremos el resumen del mes actual
+          const today = new Date();
+          const startDate = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+          const endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+
+          const apiResponse = await fetch(`http://localhost:4321/api/reports/summary?startDate=${startDate}&endDate=${endDate}`, {
+            headers: {
+              'Cookie': `auth_token=${token}; active_company_id=${activeCompanyId}` // Pasamos las cookies explícitamente
+            }
+          });
+          
+          if (apiResponse.ok) {
+            const data = await apiResponse.json();
+            netBalance = data.netBalance;
+            totalIncome = data.totalIncome;
+            totalExpense = data.totalExpense;
+            console.log('Summary Astro: Datos de resumen cargados:', { netBalance, totalIncome, totalExpense });
+          } else {
+            const errorData = await apiResponse.json();
+            console.error('Summary Astro: Error al cargar datos de resumen:', errorData.message);
+            // Puedes manejar el error mostrando un mensaje al usuario
+          }
+
+      } else {
+          console.warn("Empresa activa en cookie no válida para el usuario. Redirigiendo a /dashboard/companies.");
+          Astro.cookies.set('active_company_id', '', { expires: new Date(0), path: '/' }); 
+          return Astro.redirect('/dashboard/companies');
+      }
+  } else {
+      // Si no hay empresa activa y el usuario tiene empresas, redirigir a la página de empresas
+      if (userCompanies.length > 0) {
+          console.warn("No hay empresa activa seleccionada. Redirigiendo a /dashboard/companies.");
+          return Astro.redirect('/dashboard/companies');
+      } else {
+          // Si no tiene empresas, redirigir a la página de empresas para que cree una
+          console.warn("El usuario no tiene empresas. Redirigiendo a /dashboard/companies para crear una.");
+          return Astro.redirect('/dashboard/companies');
+      }
+  }
+
+} catch (error: unknown) {
+  if (error instanceof Error) {
+    console.error("Error en summary.astro:", error.message);
+  } else {
+    console.error("Error en summary.astro:", error);
+  }
+  return Astro.redirect('/login');
+}
+
+// Formateador de moneda
+const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('es-VE', { style: 'currency', currency: 'VES' }).format(amount);
+};
+
+// Clase para el color del saldo (verde/rojo)
+const getBalanceClass = (balance: number) => {
+    return balance >= 0 ? 'text-green-600' : 'text-red-600';
+};
+---
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resumen | Contabilito</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="font-poppins bg-gray-100 min-h-screen flex flex-col">
+    <HeaderDashboard 
+        activeCompanyId={activeCompanyId} 
+        activeCompanyName={activeCompanyName} 
+        userCompanies={userCompanies}
+    />
+
+    <div class="flex flex-grow pt-[60px]">
+        <Sidebar />
+
+        <main class="flex-grow p-8 ml-48">
+            <div class="bg-white rounded-2xl shadow-xl p-8 w-full mx-auto">
+                <h1 class="text-3xl font-extrabold text-gray-900 mb-6 text-center">
+                    Resumen Financiero
+                </h1>
+                <p class="text-md text-gray-700 mb-6 text-center">
+                    Bienvenido de nuevo, <span class="font-semibold text-blue-700">{username}</span>. Estás gestionando: <span class="font-semibold text-blue-700">{activeCompanyName}</span>
+                </p>
+
+                <!-- Tarjetas de Resumen Rápido -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div class="bg-blue-100 p-6 rounded-lg shadow-md text-center">
+                        <h2 class="text-xl font-semibold text-blue-800 mb-2">Saldo Neto del Mes</h2>
+                        <p class="text-4xl font-bold {getBalanceClass(netBalance)}">{formatCurrency(netBalance)}</p>
+                    </div>
+                    <div class="bg-green-100 p-6 rounded-lg shadow-md text-center">
+                        <h2 class="text-xl font-semibold text-green-800 mb-2">Ingresos del Mes</h2>
+                        <p class="text-4xl font-bold text-green-900">{formatCurrency(totalIncome)}</p>
+                    </div>
+                    <div class="bg-red-100 p-6 rounded-lg shadow-md text-center">
+                        <h2 class="text-xl font-semibold text-red-800 mb-2">Gastos del Mes</h2>
+                        <p class="text-4xl font-bold text-red-900">{formatCurrency(totalExpense)}</p>
+                    </div>
+                </div>
+
+                <div class="mt-8 text-center">
+                    <p class="text-gray-600">
+                        Este es un resumen rápido de tus finanzas para el mes actual.
+                        Puedes ir a "Estadísticas" para ver reportes más detallados y filtrar por periodos.
+                    </p>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

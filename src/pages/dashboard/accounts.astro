@@ -1,0 +1,359 @@
+---
+// src/pages/dashboard/accounts.astro
+import { initializeDatabase } from '../../db/db.js';
+import pkg from 'jsonwebtoken';
+const { verify } = pkg;
+import HeaderDashboard from '../../components/Header-dashboard.astro';
+import Sidebar from '../../components/Sidebar.astro';
+import '../../styles/global.css';
+
+// Inicializa la base de datos al cargar la página
+await initializeDatabase().catch(err => console.error("Error al inicializar DB desde accounts.astro:", err));
+
+const JWT_SECRET = '0402Dionel.*'; 
+
+let username = 'Usuario';
+let userId = null;
+let activeCompanyId: number | null = null;
+let activeCompanyName: string = 'Sin Empresa';
+let accounts: any[] = []; // Para almacenar las cuentas con sus saldos
+let userCompanies: any[] = []; // ¡NUEVO! Para almacenar todas las empresas del usuario
+
+try {
+  const token = Astro.cookies.get('auth_token')?.value;
+
+  if (!token) {
+    return Astro.redirect('/login');
+  }
+
+  const decoded = verify(token, JWT_SECRET);
+  if (typeof decoded === 'object' && decoded !== null) {
+    username = decoded.username || 'Usuario';
+    userId = decoded.userId;
+  } else {
+    console.error("Token decodificado en accounts.astro no es un objeto:", decoded);
+    return Astro.redirect('/login');
+  }
+
+  const db = await initializeDatabase(); 
+
+  // ¡NUEVO! Obtener TODAS las empresas a las que el usuario tiene acceso
+  userCompanies = await db.all(
+      `SELECT c.id, c.company_name, ucr.role
+       FROM companies c
+       JOIN user_company_roles ucr ON c.id = ucr.company_id
+       WHERE ucr.user_id = ?`,
+      userId
+  );
+
+  // Lógica para determinar la empresa activa
+  const activeCompanyCookie = Astro.cookies.get('active_company_id')?.value;
+
+  if (activeCompanyCookie) {
+      const companyInfo = await db.get(
+          `SELECT c.id, c.company_name FROM companies c JOIN user_company_roles ucr ON c.id = ucr.company_id WHERE c.id = ? AND ucr.user_id = ?`,
+          activeCompanyCookie,
+          userId
+      );
+      if (companyInfo) {
+          activeCompanyId = companyInfo.id;
+          activeCompanyName = companyInfo.company_name;
+
+          // Obtener las cuentas con sus saldos desde el API
+          const apiResponse = await fetch(`http://localhost:4321/api/accounts/get-by-company`, {
+            headers: {
+              'Cookie': `auth_token=${token}; active_company_id=${activeCompanyId}` // Pasamos las cookies explícitamente al API
+            }
+          });
+          
+          if (apiResponse.ok) {
+            const data = await apiResponse.json();
+            accounts = data.accounts;
+            console.log('Accounts Astro: Cuentas cargadas:', accounts);
+          } else {
+            const errorData = await apiResponse.json();
+            console.error('Accounts Astro: Error al cargar cuentas:', errorData.message);
+            // Puedes manejar el error mostrando un mensaje al usuario
+          }
+
+      } else {
+          console.warn("Empresa activa en cookie no válida para el usuario. Redirigiendo a /dashboard/companies.");
+          Astro.cookies.set('active_company_id', '', { expires: new Date(0), path: '/' }); // Limpiar cookie inválida
+          return Astro.redirect('/dashboard/companies');
+      }
+  } else {
+      // Si no hay empresa activa y el usuario tiene empresas, redirigir a la página de empresas
+      if (userCompanies.length > 0) {
+          console.warn("No hay empresa activa seleccionada. Redirigiendo a /dashboard/companies.");
+          return Astro.redirect('/dashboard/companies');
+      } else {
+          // Si no tiene empresas, redirigir a la página de empresas para que cree una
+          console.warn("El usuario no tiene empresas. Redirigiendo a /dashboard/companies para crear una.");
+          return Astro.redirect('/dashboard/companies');
+      }
+  }
+
+} catch (error: unknown) {
+  if (error instanceof Error) {
+    console.error("Error en accounts.astro:", error.message);
+  } else {
+    console.error("Error en accounts.astro:", error);
+  }
+  return Astro.redirect('/login');
+}
+
+// Formateador de moneda
+const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('es-VE', { style: 'currency', currency: 'VES' }).format(amount);
+};
+
+// Clase para el color del saldo (verde/rojo)
+const getBalanceClass = (balance: number) => {
+    return balance >= 0 ? 'text-green-600' : 'text-red-600';
+};
+---
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cuentas | Contabilito</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="font-poppins bg-gray-100 min-h-screen flex flex-col">
+    <HeaderDashboard 
+        activeCompanyId={activeCompanyId} 
+        activeCompanyName={activeCompanyName} 
+        userCompanies={userCompanies} {/* ¡IMPORTANTE! Pasar userCompanies */}
+    />
+
+    <div class="flex flex-grow pt-[60px]">
+        <Sidebar />
+
+        <main class="flex-grow p-8 ml-48">
+            <div class="bg-white rounded-2xl shadow-xl p-8 max-w-2xl w-full mx-auto">
+                <h1 class="text-3xl font-extrabold text-gray-900 mb-6 text-center">
+                    Gestión de Cuentas
+                </h1>
+                <p class="text-md text-gray-700 mb-6 text-center">
+                    Administra las cuentas de tu empresa: <span class="font-semibold text-blue-700">{activeCompanyName}</span>
+                </p>
+                
+                <!-- Formulario para Crear Nueva Cuenta -->
+                <div class="mb-8 p-6 bg-gray-50 rounded-lg shadow-inner">
+                    <h2 class="text-2xl font-semibold text-gray-800 mb-4">Crear Nueva Cuenta</h2>
+                    <form id="createAccountForm" class="space-y-4">
+                        <div>
+                            <label for="accountName" class="block text-sm font-medium text-gray-700">Nombre de la Cuenta</label>
+                            <input
+                                type="text"
+                                id="accountName"
+                                name="accountName"
+                                required
+                                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                placeholder="Ej: Cuenta Principal, Ahorros, Tarjeta de Crédito"
+                            />
+                        </div>
+                        <div>
+                            <label for="initialBalance" class="block text-sm font-medium text-gray-700">Saldo Inicial (Opcional)</label>
+                            <input
+                                type="number"
+                                id="initialBalance"
+                                name="initialBalance"
+                                step="0.01"
+                                value="0.00"
+                                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                            />
+                        </div>
+                        <button
+                            type="submit"
+                            class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-200"
+                        >
+                            Crear Cuenta
+                        </button>
+                        <div id="createAccountFeedback" class="mt-3 text-center text-sm font-medium"></div>
+                    </form>
+                </div>
+
+                <!-- Sección para listar Cuentas Existentes -->
+                <div class="mt-8">
+                    <h2 class="text-2xl font-semibold text-gray-800 mb-4">Mis Cuentas</h2>
+                    <div id="accountsList" class="space-y-3">
+                        {accounts.length === 0 ? (
+                            <p class="text-gray-600 text-center">No hay cuentas registradas para esta empresa. ¡Crea una!</p>
+                        ) : (
+                            accounts.map(account => (
+                                <div class="bg-white p-4 rounded-md shadow-sm border border-gray-200 flex justify-between items-center">
+                                    <div>
+                                        <h3 class="font-semibold text-lg text-gray-800">{account.account_name}</h3>
+                                        <p class="text-sm text-gray-600">Saldo Inicial: {formatCurrency(account.initial_balance)}</p>
+                                        <p class="text-sm font-bold {getBalanceClass(account.current_balance)}">Saldo Actual: {formatCurrency(account.current_balance)}</p>
+                                    </div>
+                                    <button 
+                                        data-account-id={account.id} 
+                                        data-account-name={account.account_name}
+                                        class="delete-account-btn ml-4 bg-red-500 text-white px-3 py-1 rounded-md text-sm hover:bg-red-600 transition-colors duration-200"
+                                    >
+                                        Eliminar
+                                    </button>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                    <div id="accountsFeedback" class="mt-4 text-center text-sm font-medium"></div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script is:inline>
+        const createAccountForm = document.getElementById('createAccountForm');
+        const createAccountFeedback = document.getElementById('createAccountFeedback');
+        const accountsList = document.getElementById('accountsList');
+        const accountsFeedback = document.getElementById('accountsFeedback');
+        
+        // Función para cargar y mostrar las cuentas dinámicamente
+        async function loadAccounts() {
+            accountsList.innerHTML = '<p class="text-gray-600 text-center">Cargando cuentas...</p>';
+            accountsFeedback.textContent = '';
+
+            try {
+                // La API ya obtiene el companyId de la cookie
+                const response = await fetch('/api/accounts/get-by-company');
+                console.log('Cliente: Respuesta de fetch de cuentas recibida. response.ok:', response.ok);
+
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Cliente: Datos de cuentas recibidos:', data);
+
+                    if (data.accounts && data.accounts.length > 0) {
+                        accountsList.innerHTML = data.accounts.map(account => {
+                            const balanceClass = account.current_balance >= 0 ? 'text-green-600' : 'text-red-600';
+                            const formattedInitialBalance = new Intl.NumberFormat('es-VE', { style: 'currency', currency: 'VES' }).format(account.initial_balance);
+                            const formattedCurrentBalance = new Intl.NumberFormat('es-VE', { style: 'currency', currency: 'VES' }).format(account.current_balance);
+                            return `
+                                <div class="bg-white p-4 rounded-md shadow-sm border border-gray-200 flex justify-between items-center">
+                                    <div>
+                                        <h3 class="font-semibold text-lg text-gray-800">${account.account_name}</h3>
+                                        <p class="text-sm text-gray-600">Saldo Inicial: ${formattedInitialBalance}</p>
+                                        <p class="text-sm font-bold ${balanceClass}">Saldo Actual: ${formattedCurrentBalance}</p>
+                                    </div>
+                                    <button 
+                                        data-account-id="${account.id}" 
+                                        data-account-name="${account.account_name}"
+                                        class="delete-account-btn ml-4 bg-red-500 text-white px-3 py-1 rounded-md text-sm hover:bg-red-600 transition-colors duration-200"
+                                    >
+                                        Eliminar
+                                    </button>
+                                </div>
+                            `;
+                        }).join('');
+
+                        // Añadir event listeners a los botones de eliminar
+                        document.querySelectorAll('.delete-account-btn').forEach(button => {
+                            button.addEventListener('click', async (e) => {
+                                const accountId = e.target.dataset.accountId;
+                                const accountName = e.target.dataset.accountName;
+                                if (confirm(`¿Estás seguro de que quieres eliminar la cuenta "${accountName}"? Todas las transacciones asociadas a ella también se eliminarán.`)) {
+                                    await deleteAccount(accountId);
+                                }
+                            });
+                        });
+                        console.log('Cliente: Cuentas renderizadas.');
+                    } else {
+                        accountsList.innerHTML = '<p class="text-gray-600 text-center">No hay cuentas registradas para esta empresa. ¡Crea una!</p>';
+                        console.log('Cliente: No hay cuentas, mostrando mensaje "no hay".');
+                    }
+                } else {
+                    const errorData = await response.json();
+                    accountsFeedback.textContent = `Error al cargar cuentas: ${errorData.message || 'Desconocido'}`;
+                    accountsFeedback.className = 'mt-4 text-center text-sm font-medium text-red-600';
+                    accountsList.innerHTML = '<p class="text-red-600 text-center">No se pudieron cargar las cuentas.</p>';
+                    console.error('Cliente: Error en la respuesta del servidor al cargar cuentas:', errorData);
+                }
+            } catch (error) {
+                console.error('Cliente: Error CATCH de red al cargar cuentas:', error);
+                accountsFeedback.textContent = 'Error de red al cargar cuentas.';
+                accountsFeedback.className = 'mt-4 text-center text-sm font-medium text-red-600';
+                accountsList.innerHTML = '<p class="text-red-600 text-center">No se pudieron cargar las cuentas.</p>';
+            }
+        }
+
+        // Función para eliminar una cuenta
+        async function deleteAccount(accountId) {
+            accountsFeedback.textContent = 'Eliminando cuenta...';
+            accountsFeedback.className = 'mt-4 text-center text-sm font-medium text-blue-600';
+            try {
+                const response = await fetch('/api/accounts/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ accountId: accountId }) // companyId se obtiene en el backend de la cookie
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    accountsFeedback.textContent = data.message;
+                    accountsFeedback.className = 'mt-4 text-center text-sm font-medium text-green-600';
+                    await loadAccounts(); // Recargar la lista de cuentas
+                } else {
+                    accountsFeedback.textContent = data.message || 'Error al eliminar la cuenta.';
+                    accountsFeedback.className = 'mt-4 text-center text-sm font-medium text-red-600';
+                }
+            } catch (error) {
+                console.error('Error al eliminar cuenta:', error);
+                accountsFeedback.textContent = 'Error de red al eliminar la cuenta.';
+                accountsFeedback.className = 'mt-4 text-center text-sm font-medium text-red-600';
+            }
+        }
+
+
+        // Manejador de envío del formulario de creación de cuenta
+        createAccountForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+
+            const accountName = document.getElementById('accountName').value.trim();
+            const initialBalance = parseFloat(document.getElementById('initialBalance').value);
+
+            if (!accountName) {
+                createAccountFeedback.textContent = 'El nombre de la cuenta es obligatorio.';
+                createAccountFeedback.className = 'mt-3 text-center text-sm font-medium text-red-600';
+                return;
+            }
+            if (isNaN(initialBalance)) {
+                createAccountFeedback.textContent = 'El saldo inicial debe ser un número válido.';
+                createAccountFeedback.className = 'mt-3 text-center text-sm font-medium text-red-600';
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/accounts/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ accountName, initialBalance }) // companyId se obtiene en el backend de la cookie
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    createAccountFeedback.textContent = data.message;
+                    createAccountFeedback.className = 'mt-3 text-center text-sm font-medium text-green-600';
+                    createAccountForm.reset(); // Limpiar el formulario
+                    document.getElementById('initialBalance').value = "0.00"; // Resetear saldo inicial
+                    await loadAccounts(); // Recargar la lista de cuentas
+                } else {
+                    createAccountFeedback.textContent = data.message || 'Error al crear la cuenta.';
+                    createAccountFeedback.className = 'mt-3 text-center text-sm font-medium text-red-600';
+                }
+            } catch (error) {
+                console.error('Error al enviar la solicitud de creación de cuenta:', error);
+                createAccountFeedback.textContent = 'No se pudo conectar al servidor para crear la cuenta.';
+                createAccountFeedback.className = 'mt-3 text-center text-sm font-medium text-red-600';
+            }
+        });
+
+        // Cargar cuentas al cargar la página (para el cliente)
+        document.addEventListener('DOMContentLoaded', loadAccounts);
+    </script>
+</body>
+</html>
