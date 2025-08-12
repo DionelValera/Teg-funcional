@@ -10,7 +10,7 @@ import '../../styles/global.css';
 // Inicializa la base de datos
 await initializeDatabase().catch(err => console.error("Error al inicializar DB desde companies.astro:", err));
 
-const JWT_SECRET = '0402Dionel.*'; 
+const JWT_SECRET = '0402Dionel.*';
 
 let username = 'Usuario';
 let userId = null;
@@ -19,73 +19,67 @@ let activeCompanyName: string = 'Sin Empresa';
 let userCompanies: any[] = []; // Para almacenar las empresas del usuario
 
 try {
-  const token = Astro.cookies.get('auth_token')?.value;
+    const token = Astro.cookies.get('auth_token')?.value;
 
-  if (!token) {
-    return Astro.redirect('/login');
-  }
+    if (!token) {
+        return Astro.redirect('/login');
+    }
 
-  const decoded = verify(token, JWT_SECRET);
-  if (typeof decoded === 'object' && decoded !== null) {
-    username = decoded.username || 'Usuario';
-    userId = decoded.userId;
-  } else {
-    console.error("Token decodificado en companies.astro no es un objeto:", decoded);
-    return Astro.redirect('/login');
-  }
+    const decoded = verify(token, JWT_SECRET);
+    if (typeof decoded === 'object' && decoded !== null) {
+        username = decoded.username || 'Usuario';
+        userId = decoded.userId;
+    } else {
+        console.error("Token decodificado en companies.astro no es un objeto:", decoded);
+        return Astro.redirect('/login');
+    }
 
-  const db = await initializeDatabase(); 
+    const db = await initializeDatabase();
 
-  // Obtener TODAS las empresas a las que el usuario tiene acceso
-  userCompanies = await db.all(
-      `SELECT c.id, c.company_name, ucr.role
-       FROM companies c
-       JOIN user_company_roles ucr ON c.id = ucr.company_id
-       WHERE ucr.user_id = ?`,
-      userId
-  );
+    // Obtener TODAS las empresas a las que el usuario tiene acceso
+    userCompanies = await db.all(
+        `SELECT c.id, c.company_name, ucr.role
+        FROM companies c
+        JOIN user_company_roles ucr ON c.id = ucr.company_id
+        WHERE ucr.user_id = ?`,
+        userId
+    );
 
-  // Lógica para determinar la empresa activa
-  const activeCompanyCookie = Astro.cookies.get('active_company_id')?.value;
-  if (activeCompanyCookie) {
-      const companyInfo = await db.get(
-          `SELECT c.id, c.company_name FROM companies c JOIN user_company_roles ucr ON c.id = ucr.company_id WHERE c.id = ? AND ucr.user_id = ?`,
-          activeCompanyCookie,
-          userId
-      );
-      if (companyInfo) {
-          activeCompanyId = companyInfo.id;
-          activeCompanyName = companyInfo.company_name;
-      } else {
-          // Si la cookie existe pero el ID de empresa no es válido para este usuario, la limpiamos.
-          console.warn("Empresa activa en cookie no válida para el usuario o no encontrada en DB. Limpiando cookie.");
-          Astro.cookies.set('active_company_id', '', { expires: new Date(0), path: '/' }); 
-          activeCompanyId = null; // Asegurarse de que quede nulo
-      }
-  }
+    // Lógica para determinar la empresa activa
+    const activeCompanyCookie = Astro.cookies.get('active_company_id')?.value;
+    if (activeCompanyCookie) {
+        const companyInfo = await db.get(
+            `SELECT c.id, c.company_name FROM companies c JOIN user_company_roles ucr ON c.id = ucr.company_id WHERE c.id = ? AND ucr.user_id = ?`,
+            activeCompanyCookie,
+            userId
+        );
+        if (companyInfo) {
+            activeCompanyId = companyInfo.id;
+            activeCompanyName = companyInfo.company_name;
+        } else {
+            // Si la cookie existe pero el ID de empresa no es válido para este usuario, la limpiamos.
+            console.warn("Empresa activa en cookie no válida para el usuario o no encontrada en DB. Limpiando cookie.");
+            Astro.cookies.set('active_company_id', '', { expires: new Date(0), path: '/' });
+            activeCompanyId = null; // Asegurarse de que quede nulo
+        }
+    }
 
-  // Si no hay empresa activa (o la cookie fue limpiada) y el usuario tiene empresas,
-  // establecemos la primera como la activa SOLO EN MEMORIA para esta renderización.
-  // ¡IMPORTANTE! NO VOLVEMOS A SETEAR LA COOKIE AQUÍ.
-  // La cookie solo debe ser establecida por los endpoints de la API (create/switch).
-  if (activeCompanyId === null && userCompanies.length > 0) {
-      const firstCompany = userCompanies[0];
-      activeCompanyId = firstCompany.id;
-      activeCompanyName = firstCompany.company_name;
-      console.log(`companies.astro: Estableciendo por defecto la primera empresa del usuario para renderizado: ${activeCompanyId}`);
-      // Si quieres que esta primera empresa se guarde en la cookie,
-      // la lógica debería estar en el login o en un endpoint de inicialización,
-      // no en cada carga de página. Por ahora, asumimos que la API ya lo hizo.
-  }
-
+    // Si no hay empresa activa (o la cookie fue limpiada) y el usuario tiene empresas,
+    // establecemos la primera como la activa SOLO EN MEMORIA para esta renderización.
+    if (activeCompanyId === null && userCompanies.length > 0) {
+        const firstCompany = userCompanies[0];
+        activeCompanyId = firstCompany.id;
+        activeCompanyName = firstCompany.company_name;
+        console.log(`companies.astro: Estableciendo por defecto la primera empresa del usuario para renderizado: ${activeCompanyId}`);
+    }
 
 } catch (error: unknown) {
-  if (error instanceof Error) {
-    console.error("Error en companies.astro:", error.message);
-  } else {
-    console.error("Error en companies.astro:", error);
-  }
-  return Astro.redirect('/login');
+    if (error instanceof Error) {
+        console.error("Error en companies.astro:", error.message);
+    } else {
+        console.error("Error en companies.astro:", error);
+    }
+    return Astro.redirect('/login');
 }
 
 ---
@@ -96,41 +90,34 @@ try {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestión de Empresas | Contabilito</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 </head>
 <body class="font-poppins bg-gray-100 min-h-screen flex flex-col">
-    <HeaderDashboard 
-        activeCompanyId={activeCompanyId} 
-        activeCompanyName={activeCompanyName} 
+    <HeaderDashboard
+        activeCompanyId={activeCompanyId}
+        activeCompanyName={activeCompanyName}
         userCompanies={userCompanies}
     />
 
     <div class="flex flex-grow pt-[60px]">
         <Sidebar />
 
-        <main class="flex-grow p-8 ml-48">
+        <main class="flex-grow p-8 ml-56">
             <div class="bg-white rounded-2xl shadow-xl p-8 w-full mx-auto">
                 <h1 class="text-3xl font-extrabold text-gray-900 mb-6 text-center">
                     Gestión de Empresas
                 </h1>
-                <p class="text-md text-gray-700 mb-6 text-center">
-                    Aquí puedes gestionar tus empresas y cambiar la empresa activa.
-                </p>
-
-                <!-- Sección para la empresa activa -->
-                <div class="mb-8 p-6 bg-blue-50 rounded-lg shadow-inner text-center">
+                <div class="mb-8 p-6 bg-gray-100 rounded-lg shadow-inner text-center">
                     <h2 class="text-2xl font-semibold text-blue-800 mb-2">Empresa Activa Actual:</h2>
                     <p class="text-3xl font-bold text-gray-900">{activeCompanyName || 'Ninguna seleccionada'}</p>
-                    {activeCompanyId && <p class="text-sm text-gray-600">ID: {activeCompanyId}</p>}
                 </div>
 
-                <!-- Botón para crear nueva empresa -->
                 <div class="text-center mb-8">
-                    <button id="createCompanyBtn" class="bg-green-600 text-white px-6 py-3 rounded-md hover:bg-green-700 transition-colors duration-200 text-lg font-semibold shadow-lg">
+                    <button id="createCompanyBtn" class="bg-blue-700 text-white px-6 py-3 rounded-md hover:bg-blue-800 transition-colors duration-400 text-lg font-semibold shadow-lg">
                         + Crear Nueva Empresa
                     </button>
                 </div>
 
-                <!-- Formulario para crear empresa (inicialmente oculto) -->
                 <div id="createCompanyFormContainer" class="hidden bg-gray-50 p-6 rounded-lg shadow-md mb-8">
                     <h2 class="text-2xl font-semibold text-gray-800 mb-4 text-center">Crear Nueva Empresa</h2>
                     <form id="createCompanyForm" class="max-w-md mx-auto space-y-4">
@@ -148,7 +135,6 @@ try {
                     <p id="createCompanyMessage" class="mt-4 text-center text-sm"></p>
                 </div>
 
-                <!-- Listado de Empresas del Usuario -->
                 <h2 class="text-2xl font-semibold text-gray-800 mb-4 text-center">Mis Empresas</h2>
                 <div class="overflow-x-auto bg-white rounded-lg shadow-md">
                     <table class="min-w-full divide-y divide-gray-200">
@@ -188,15 +174,37 @@ try {
                                         </td>
                                         <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium text-center">
                                             {company.id != activeCompanyId && (
-                                                <button 
-                                                    data-company-id={company.id} 
+                                                <button
+                                                    data-company-id={company.id}
                                                     data-company-name={company.company_name}
                                                     class="switch-company-btn text-blue-600 hover:text-blue-900 mr-4"
+                                                    title="Cambiar a esta empresa"
                                                 >
-                                                    Seleccionar
+                                                    <i class="fas fa-toggle-on mr-1"></i>Seleccionar
                                                 </button>
                                             )}
-                                            {/* Aquí se pueden añadir botones para "Gestionar Usuarios", "Editar Empresa", etc. */}
+                                            {/* Botón de Editar Empresa visible para owner y admin */}
+                                            {(company.role === 'owner' || company.role === 'admin') && (
+                                                <button
+                                                    data-company-id={company.id}
+                                                    data-company-name={company.company_name}
+                                                    class="edit-company-btn text-yellow-600 hover:text-yellow-800 mr-4"
+                                                    title="Editar nombre de la empresa"
+                                                >
+                                                    <i class="fas fa-edit mr-1"></i>
+                                                </button>
+                                            )}
+                                            {/* Botón de Eliminar Empresa visible solo para el owner */}
+                                            {company.role === 'owner' && (
+                                                <button
+                                                    data-company-id={company.id}
+                                                    data-company-name={company.company_name}
+                                                    class="delete-company-btn text-red-600 hover:text-red-800"
+                                                    title="Eliminar esta empresa"
+                                                >
+                                                    <i class="fas fa-trash-alt mr-1"></i>
+                                                </button>
+                                            )}
                                         </td>
                                     </tr>
                                 ))
@@ -208,7 +216,60 @@ try {
         </main>
     </div>
 
+    <!-- Modal para editar empresa -->
+    <div id="editModal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-gray-800/40 backdrop-blur bg-opacity-75 p-4">
+        <div class="bg-white rounded-lg shadow-xl p-8 w-full max-w-lg">
+            <h2 class="text-2xl font-bold mb-4">Editar Nombre de la Empresa</h2>
+            <form id="editCompanyForm">
+                <input type="hidden" id="editCompanyId" name="companyId">
+                <div class="mb-4">
+                    <label for="editCompanyName" class="block text-sm font-medium text-gray-700">Nuevo Nombre de la Empresa</label>
+                    <input type="text" id="editCompanyName" name="newCompanyName" required class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm" />
+                </div>
+                <div class="flex justify-end space-x-4">
+                    <button type="button" id="cancelEditBtn" class="bg-gray-300 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-400 transition-colors duration-200 font-semibold">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="bg-yellow-600 text-white px-4 py-2 rounded-md hover:bg-yellow-700 transition-colors duration-200 font-semibold">
+                        Guardar Cambios
+                    </button>
+                </div>
+            </form>
+            <p id="editMessage" class="mt-4 text-center text-sm"></p>
+        </div>
+    </div>
+
+    <!-- Modal para confirmar eliminación -->
+    <div id="deleteModal" class="hidden fixed inset-0 z-50 flex items-center justify-center backdrop-blur bg-gray-800/50 bg-opacity-75 p-4">
+        <div class="bg-white rounded-lg shadow-xl p-8 w-full max-w-lg text-center">
+            <i class="fas fa-exclamation-triangle text-5xl text-red-500 mb-4"></i>
+            <h2 class="text-2xl font-bold mb-4">¿Estás seguro de que quieres eliminar esta empresa?</h2>
+            <p class="text-gray-700 mb-6">Esta acción es irreversible y eliminará la empresa "<span id="deleteCompanyNameSpan" class="font-bold"></span>" junto con todos sus datos asociados.</p>
+            <div class="flex justify-center space-x-4">
+                <button type="button" id="cancelDeleteBtn" class="bg-gray-300 text-gray-800 px-4 py-2 rounded-md hover:bg-gray-400 transition-colors duration-200 font-semibold">
+                    Cancelar
+                </button>
+                <button type="button" id="confirmDeleteBtn" class="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors duration-200 font-semibold">
+                    Sí, Eliminar Empresa
+                </button>
+            </div>
+            <p id="deleteMessage" class="mt-4 text-center text-sm"></p>
+        </div>
+    </div>
+
+    <!-- Modal para mensajes de alerta/confirmación genéricos -->
+    <div id="messageModal" class="hidden fixed inset-0 z-50 flex items-center backdrop-blur justify-center bg-gray-800/40 bg-opacity-75 p-4">
+        <div class="bg-white rounded-lg shadow-xl  z-51 p-8 w-full max-w-sm text-center">
+            <i id="messageIcon" class="fas fa-info-circle text-4xl mb-4"></i>
+            <p id="messageText" class="text-gray-700 mb-6"></p>
+            <button id="closeMessageBtn" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors duration-200 font-semibold">
+                Entendido
+            </button>
+        </div>
+    </div>
+
     <script is:inline>
+        // === ELEMENTOS DEL DOM ===
         const createCompanyBtn = document.getElementById('createCompanyBtn');
         const createCompanyFormContainer = document.getElementById('createCompanyFormContainer');
         const cancelCreateCompanyBtn = document.getElementById('cancelCreateCompanyBtn');
@@ -217,22 +278,51 @@ try {
         const createCompanyMessage = document.getElementById('createCompanyMessage');
         const switchCompanyButtons = document.querySelectorAll('.switch-company-btn');
 
-        // Mostrar/Ocultar formulario de creación de empresa
+        // Modals
+        const editModal = document.getElementById('editModal');
+        const editCompanyForm = document.getElementById('editCompanyForm');
+        const editCompanyIdInput = document.getElementById('editCompanyId');
+        const editCompanyNameInput = document.getElementById('editCompanyName');
+        const cancelEditBtn = document.getElementById('cancelEditBtn');
+        const editMessage = document.getElementById('editMessage');
+
+        const deleteModal = document.getElementById('deleteModal');
+        const deleteCompanyNameSpan = document.getElementById('deleteCompanyNameSpan');
+        const confirmDeleteBtn = document.getElementById('confirmDeleteBtn');
+        const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
+        const deleteMessage = document.getElementById('deleteMessage');
+
+        const messageModal = document.getElementById('messageModal');
+        const messageIcon = document.getElementById('messageIcon');
+        const messageText = document.getElementById('messageText');
+        const closeMessageBtn = document.getElementById('closeMessageBtn');
+
+        // Función para mostrar un modal de mensaje personalizado
+        function showMessageModal(text, isError = false) {
+            messageText.textContent = text;
+            if (isError) {
+                messageIcon.className = 'fas fa-times-circle text-4xl text-red-500 mb-4';
+            } else {
+                messageIcon.className = 'fas fa-info-circle text-4xl text-blue-500 mb-4';
+            }
+            messageModal.classList.remove('hidden');
+        }
+
+        // === LÓGICA DE CREACIÓN DE EMPRESA ===
         createCompanyBtn.addEventListener('click', () => {
             createCompanyFormContainer.classList.remove('hidden');
-            createCompanyBtn.classList.add('hidden'); // Ocultar el botón de crear
+            createCompanyBtn.classList.add('hidden');
             companyNameInput.focus();
         });
 
         cancelCreateCompanyBtn.addEventListener('click', () => {
             createCompanyFormContainer.classList.add('hidden');
-            createCompanyBtn.classList.remove('hidden'); // Mostrar el botón de crear
-            createCompanyForm.reset(); // Limpiar el formulario
-            createCompanyMessage.textContent = ''; // Limpiar mensajes
+            createCompanyBtn.classList.remove('hidden');
+            createCompanyForm.reset();
+            createCompanyMessage.textContent = '';
             createCompanyMessage.className = 'mt-4 text-center text-sm';
         });
 
-        // Manejar el envío del formulario de creación de empresa
         createCompanyForm.addEventListener('submit', async (event) => {
             event.preventDefault();
             createCompanyMessage.textContent = 'Creando empresa...';
@@ -243,70 +333,169 @@ try {
             try {
                 const response = await fetch('/api/companies/create', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ companyName }),
                 });
 
                 const data = await response.json();
 
                 if (response.ok) {
-                    createCompanyMessage.textContent = data.message;
-                    createCompanyMessage.className = 'mt-4 text-center text-sm text-green-600';
+                    showMessageModal(data.message);
                     createCompanyForm.reset();
-                    // Recargar la página para mostrar la nueva empresa y actualizar la lista
-                    window.location.reload(); 
+                    window.location.reload();
                 } else {
-                    createCompanyMessage.textContent = data.message || 'Error al crear la empresa.';
-                    createCompanyMessage.className = 'mt-4 text-center text-sm text-red-600';
+                    showMessageModal(data.message || 'Error al crear la empresa.', true);
                 }
             } catch (error) {
                 console.error('Error de red al crear empresa:', error);
-                createCompanyMessage.textContent = 'Error de red. Inténtalo de nuevo.';
-                createCompanyMessage.className = 'mt-4 text-center text-sm text-red-600';
+                showMessageModal('Error de red. Inténtalo de nuevo.', true);
             }
         });
 
-        // Manejar el cambio de empresa activa
+        // === LÓGICA DE CAMBIO DE EMPRESA ===
         switchCompanyButtons.forEach(button => {
             button.addEventListener('click', async (event) => {
                 const companyId = event.target.dataset.companyId;
                 const companyName = event.target.dataset.companyName;
 
-                if (!companyId) {
-                    alert('No se pudo obtener el ID de la empresa.'); // Considerar usar un modal personalizado en lugar de alert
-                    return;
-                }
+                showMessageModal(`¿Estás seguro de que quieres cambiar a la empresa "${companyName}"?`);
+                closeMessageBtn.textContent = 'Cancelar';
+                closeMessageBtn.onclick = () => messageModal.classList.add('hidden');
 
-                // Usar un modal o un mensaje para confirmar, no alert()
-                const confirmSwitch = confirm(`¿Estás seguro de que quieres cambiar a la empresa "${companyName}"?`); // Reemplazar con modal
-                if (!confirmSwitch) {
-                    return;
-                }
+                const newConfirmBtn = document.createElement('button');
+                newConfirmBtn.textContent = 'Sí, cambiar';
+                newConfirmBtn.className = 'bg-blue-600 mr-10 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors duration-200 font-semibold';
+                newConfirmBtn.onclick = async () => {
+                    messageModal.classList.add('hidden');
+                    try {
+                        const response = await fetch('/api/companies/switch', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ companyId: parseInt(companyId) }),
+                        });
 
-                try {
-                    const response = await fetch('/api/companies/switch', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({ companyId: parseInt(companyId) }),
-                    });
+                        const data = await response.json();
 
-                    const data = await response.json();
-
-                    if (response.ok) {
-                        alert(data.message); // Reemplazar con modal
-                        window.location.href = '/dashboard'; // Redirigir al dashboard principal
-                    } else {
-                        alert(data.message || 'Error al cambiar de empresa.'); // Reemplazar con modal
+                        if (response.ok) {
+                            window.location.href = '/dashboard';
+                        } else {
+                            showMessageModal(data.message || 'Error al cambiar de empresa.', true);
+                        }
+                    } catch (error) {
+                        console.error('Error de red al cambiar empresa:', error);
+                        showMessageModal('Error de red al cambiar de empresa.', true);
                     }
-                } catch (error) {
-                    console.error('Error de red al cambiar empresa:', error);
-                    alert('Error de red al cambiar de empresa.'); // Reemplazar con modal
-                }
+                };
+
+                const flexContainer = closeMessageBtn.parentElement;
+                flexContainer.insertBefore(newConfirmBtn, closeMessageBtn);
+
+                messageModal.addEventListener('transitionend', () => {
+                    if (messageModal.classList.contains('hidden')) {
+                         newConfirmBtn.remove();
+                         closeMessageBtn.textContent = 'Entendido';
+                         closeMessageBtn.onclick = () => messageModal.classList.add('hidden');
+                    }
+                }, { once: true });
             });
+        });
+
+        // === LÓGICA DE EDICIÓN DE EMPRESA ===
+        document.querySelectorAll('.edit-company-btn').forEach(button => {
+            button.addEventListener('click', (event) => {
+                const companyId = event.currentTarget.dataset.companyId;
+                const companyName = event.currentTarget.dataset.companyName;
+                editCompanyIdInput.value = companyId;
+                editCompanyNameInput.value = companyName;
+                editModal.classList.remove('hidden');
+            });
+        });
+
+        cancelEditBtn.addEventListener('click', () => {
+            editModal.classList.add('hidden');
+            editMessage.textContent = '';
+        });
+
+        editCompanyForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            editMessage.textContent = 'Actualizando...';
+            editMessage.className = 'mt-4 text-center text-sm text-blue-600';
+
+            const companyId = editCompanyIdInput.value;
+            const newCompanyName = editCompanyNameInput.value;
+
+            try {
+                const response = await fetch('/api/companies/update', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ companyId: parseInt(companyId), newCompanyName }),
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showMessageModal('¡Empresa actualizada con éxito!');
+                    editModal.classList.add('hidden');
+                    window.location.reload();
+                } else {
+                    editMessage.textContent = data.message || 'Error al actualizar la empresa.';
+                    editMessage.className = 'mt-4 text-center text-sm text-red-600';
+                }
+            } catch (error) {
+                console.error('Error de red al actualizar empresa:', error);
+                editMessage.textContent = 'Error de red. Inténtalo de nuevo.';
+                editMessage.className = 'mt-4 text-center text-sm text-red-600';
+            }
+        });
+
+        // === LÓGICA DE ELIMINACIÓN DE EMPRESA ===
+        document.querySelectorAll('.delete-company-btn').forEach(button => {
+            button.addEventListener('click', (event) => {
+                const companyId = event.currentTarget.dataset.companyId;
+                const companyName = event.currentTarget.dataset.companyName;
+                deleteCompanyNameSpan.textContent = companyName;
+                deleteModal.setAttribute('data-company-id', companyId);
+                deleteModal.classList.remove('hidden');
+            });
+        });
+
+        cancelDeleteBtn.addEventListener('click', () => {
+            deleteModal.classList.add('hidden');
+            deleteMessage.textContent = '';
+        });
+
+        confirmDeleteBtn.addEventListener('click', async () => {
+            deleteMessage.textContent = 'Eliminando empresa...';
+            deleteMessage.className = 'mt-4 text-center text-sm text-blue-600';
+
+            const companyId = deleteModal.getAttribute('data-company-id');
+
+            try {
+                const response = await fetch('/api/companies/delete', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ companyId: parseInt(companyId) }),
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showMessageModal('¡Empresa eliminada con éxito!');
+                    deleteModal.classList.add('hidden');
+                    window.location.reload();
+                } else {
+                    deleteMessage.textContent = data.message || 'Error al eliminar la empresa.';
+                    deleteMessage.className = 'mt-4 text-center text-sm text-red-600';
+                }
+            } catch (error) {
+                console.error('Error de red al eliminar empresa:', error);
+                deleteMessage.textContent = 'Error de red. Inténtalo de nuevo.';
+                deleteMessage.className = 'mt-4 text-center text-sm text-red-600';
+            }
+        });
+
+        closeMessageBtn.addEventListener('click', () => {
+            messageModal.classList.add('hidden');
         });
     </script>
 </body>

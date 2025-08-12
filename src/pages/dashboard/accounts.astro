@@ -10,7 +10,7 @@ import '../../styles/global.css';
 // Inicializa la base de datos al cargar la página
 await initializeDatabase().catch(err => console.error("Error al inicializar DB desde accounts.astro:", err));
 
-const JWT_SECRET = '0402Dionel.*'; 
+const JWT_SECRET = '0402Dionel.*';
 
 let username = 'Usuario';
 let userId = null;
@@ -35,7 +35,7 @@ try {
     return Astro.redirect('/login');
   }
 
-  const db = await initializeDatabase(); 
+  const db = await initializeDatabase();
 
   // ¡NUEVO! Obtener TODAS las empresas a las que el usuario tiene acceso
   userCompanies = await db.all(
@@ -65,7 +65,7 @@ try {
               'Cookie': `auth_token=${token}; active_company_id=${activeCompanyId}` // Pasamos las cookies explícitamente al API
             }
           });
-          
+
           if (apiResponse.ok) {
             const data = await apiResponse.json();
             accounts = data.accounts;
@@ -112,248 +112,305 @@ const getBalanceClass = (balance: number) => {
     return balance >= 0 ? 'text-green-600' : 'text-red-600';
 };
 ---
+---
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cuentas | Contabilito</title>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cuentas | Contabilito</title>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
 </head>
 <body class="font-poppins bg-gray-100 min-h-screen flex flex-col">
-    <HeaderDashboard 
-        activeCompanyId={activeCompanyId} 
-        activeCompanyName={activeCompanyName} 
-        userCompanies={userCompanies} {/* ¡IMPORTANTE! Pasar userCompanies */}
-    />
+    <HeaderDashboard
+        activeCompanyId={activeCompanyId}
+        activeCompanyName={activeCompanyName}
+        userCompanies={userCompanies}
+    />
 
-    <div class="flex flex-grow pt-[60px]">
-        <Sidebar />
+    <div class="flex flex-grow pt-[60px]">
+        <Sidebar />
 
-        <main class="flex-grow p-8 ml-48">
-            <div class="bg-white rounded-2xl shadow-xl p-8 max-w-2xl w-full mx-auto">
-                <h1 class="text-3xl font-extrabold text-gray-900 mb-6 text-center">
-                    Gestión de Cuentas
-                </h1>
-                <p class="text-md text-gray-700 mb-6 text-center">
-                    Administra las cuentas de tu empresa: <span class="font-semibold text-blue-700">{activeCompanyName}</span>
-                </p>
-                
-                <!-- Formulario para Crear Nueva Cuenta -->
-                <div class="mb-8 p-6 bg-gray-50 rounded-lg shadow-inner">
-                    <h2 class="text-2xl font-semibold text-gray-800 mb-4">Crear Nueva Cuenta</h2>
-                    <form id="createAccountForm" class="space-y-4">
-                        <div>
-                            <label for="accountName" class="block text-sm font-medium text-gray-700">Nombre de la Cuenta</label>
-                            <input
-                                type="text"
-                                id="accountName"
-                                name="accountName"
-                                required
-                                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                                placeholder="Ej: Cuenta Principal, Ahorros, Tarjeta de Crédito"
-                            />
-                        </div>
-                        <div>
-                            <label for="initialBalance" class="block text-sm font-medium text-gray-700">Saldo Inicial (Opcional)</label>
-                            <input
-                                type="number"
-                                id="initialBalance"
-                                name="initialBalance"
-                                step="0.01"
-                                value="0.00"
-                                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                            />
-                        </div>
-                        <button
-                            type="submit"
-                            class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-200"
-                        >
-                            Crear Cuenta
-                        </button>
-                        <div id="createAccountFeedback" class="mt-3 text-center text-sm font-medium"></div>
-                    </form>
-                </div>
+        <main class="flex-grow p-8 ml-48">
+            <div class="bg-white rounded-2xl shadow-xl p-8 max-w-2xl w-full mx-auto">
+                <h1 class="text-3xl font-extrabold text-gray-900 mb-6 text-center">
+                    Gestión de Cuentas
+                </h1>
+                <p class="text-md text-gray-700 mb-6 text-center">
+                    Administra las cuentas de tu empresa: <span class="font-semibold text-blue-700">{activeCompanyName}</span>
+                </p>
 
-                <!-- Sección para listar Cuentas Existentes -->
-                <div class="mt-8">
-                    <h2 class="text-2xl font-semibold text-gray-800 mb-4">Mis Cuentas</h2>
-                    <div id="accountsList" class="space-y-3">
-                        {accounts.length === 0 ? (
-                            <p class="text-gray-600 text-center">No hay cuentas registradas para esta empresa. ¡Crea una!</p>
-                        ) : (
-                            accounts.map(account => (
-                                <div class="bg-white p-4 rounded-md shadow-sm border border-gray-200 flex justify-between items-center">
-                                    <div>
-                                        <h3 class="font-semibold text-lg text-gray-800">{account.account_name}</h3>
-                                        <p class="text-sm text-gray-600">Saldo Inicial: {formatCurrency(account.initial_balance)}</p>
-                                        <p class="text-sm font-bold {getBalanceClass(account.current_balance)}">Saldo Actual: {formatCurrency(account.current_balance)}</p>
-                                    </div>
-                                    <button 
-                                        data-account-id={account.id} 
-                                        data-account-name={account.account_name}
-                                        class="delete-account-btn ml-4 bg-red-500 text-white px-3 py-1 rounded-md text-sm hover:bg-red-600 transition-colors duration-200"
-                                    >
-                                        Eliminar
-                                    </button>
-                                </div>
-                            ))
-                        )}
-                    </div>
-                    <div id="accountsFeedback" class="mt-4 text-center text-sm font-medium"></div>
-                </div>
-            </div>
-        </main>
-    </div>
+                <!-- Formulario para Crear Nueva Cuenta -->
+                <div class="mb-8 p-6 bg-gray-50 rounded-lg shadow-inner">
+                    <h2 class="text-2xl font-semibold text-gray-800 mb-4">Crear Nueva Cuenta</h2>
+                    <form id="createAccountForm" class="space-y-4">
+                        <div>
+                            <label for="accountName" class="block text-sm font-medium text-gray-700">Nombre de la Cuenta</label>
+                            <input
+                                type="text"
+                                id="accountName"
+                                name="accountName"
+                                required
+                                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                placeholder="Ej: Cuenta Principal, Ahorros, Tarjeta de Crédito"
+                            />
+                        </div>
+                        <div>
+                            <label for="initialBalance" class="block text-sm font-medium text-gray-700">Saldo Inicial (Opcional)</label>
+                            <input
+                                type="number"
+                                id="initialBalance"
+                                name="initialBalance"
+                                step="0.01"
+                                value="0.00"
+                                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                            />
+                        </div>
+                        <button
+                            type="submit"
+                            class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-200"
+                        >
+                            Crear Cuenta
+                        </button>
+                        <div id="createAccountFeedback" class="mt-3 text-center text-sm font-medium"></div>
+                    </form>
+                </div>
 
-    <script is:inline>
-        const createAccountForm = document.getElementById('createAccountForm');
-        const createAccountFeedback = document.getElementById('createAccountFeedback');
-        const accountsList = document.getElementById('accountsList');
-        const accountsFeedback = document.getElementById('accountsFeedback');
-        
-        // Función para cargar y mostrar las cuentas dinámicamente
-        async function loadAccounts() {
-            accountsList.innerHTML = '<p class="text-gray-600 text-center">Cargando cuentas...</p>';
-            accountsFeedback.textContent = '';
+                <!-- Sección para listar Cuentas Existentes -->
+                <div class="mt-8">
+                    <h2 class="text-2xl font-semibold text-gray-800 mb-4">Mis Cuentas</h2>
+                    <div id="accountsList" class="space-y-3">
+                        {accounts.length === 0 ? (
+                            <p class="text-gray-600 text-center">No hay cuentas registradas para esta empresa. ¡Crea una!</p>
+                        ) : (
+                            accounts.map(account => (
+                                <div class="bg-white p-4 rounded-md shadow-sm border border-gray-200 flex justify-between items-center">
+                                    <div>
+                                        <h3 class="font-semibold text-lg text-gray-800">{account.account_name}</h3>
+                                        <p class="text-sm text-gray-600">Saldo Inicial: {formatCurrency(account.initial_balance)}</p>
+                                        <p class="text-sm font-bold {getBalanceClass(account.current_balance)}">Saldo Actual: {formatCurrency(account.current_balance)}</p>
+                                    </div>
+                                    <button
+                                        data-account-id={account.id}
+                                        data-account-name={account.account_name}
+                                        class="delete-account-btn ml-4 bg-red-500 text-white px-3 py-1 rounded-md text-sm hover:bg-red-600 transition-colors duration-200"
+                                    >
+                                        Eliminar
+                                    </button>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                    <div id="accountsFeedback" class="mt-4 text-center text-sm font-medium"></div>
+                </div>
+            </div>
+        </main>
+    </div>
 
-            try {
-                // La API ya obtiene el companyId de la cookie
-                const response = await fetch('/api/accounts/get-by-company');
-                console.log('Cliente: Respuesta de fetch de cuentas recibida. response.ok:', response.ok);
+    <!-- Modal de Confirmación de Eliminación de Cuenta -->
+    <div id="deleteConfirmationModal" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-600/40 backdrop-blur bg-opacity-50 overflow-y-auto h-full w-full hidden">
+        <div class="relative mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+            <div class="mt-3 text-center">
+                <h3 class="text-lg leading-6 font-medium text-gray-900">
+                    ¿Qué deseas hacer con las transacciones de esta cuenta?
+                </h3>
+                <div class="mt-2 px-7 py-3">
+                    <p id="modal-text" class="text-sm text-gray-500"></p>
+                </div>
+                <div class="items-center px-4 py-3 space-y-2 sm:space-y-0 sm:flex sm:flex-row-reverse sm:justify-center sm:space-x-2 sm:space-x-reverse">
+                    <button id="deleteWithTransactionsBtn" class="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md w-full sm:w-auto shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+                        Eliminar Cuenta y Transacciones
+                    </button>
+                    <button id="keepTransactionsBtn" class="px-4 py-2 bg-yellow-500 text-white text-base font-medium rounded-md w-full sm:w-auto shadow-sm hover:bg-yellow-600 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:ring-offset-2">
+                        Conservar Transacciones
+                    </button>
+                </div>
+                <div class="px-4 py-3">
+                    <button id="cancelDeleteBtn" class="mt-2 px-4 py-2 bg-gray-500 text-white text-base font-medium rounded-md w-full shadow-sm hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2">
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 
-                if (response.ok) {
-                    const data = await response.json();
-                    console.log('Cliente: Datos de cuentas recibidos:', data);
+    <script is:inline>
+        // Variables para el modal
+        const createAccountForm = document.getElementById('createAccountForm');
+        const createAccountFeedback = document.getElementById('createAccountFeedback');
+        const accountsList = document.getElementById('accountsList');
+        const accountsFeedback = document.getElementById('accountsFeedback');
+        const modal = document.getElementById('deleteConfirmationModal');
+        const modalText = document.getElementById('modal-text');
+        const deleteWithTransactionsBtn = document.getElementById('deleteWithTransactionsBtn');
+        const keepTransactionsBtn = document.getElementById('keepTransactionsBtn');
+        const cancelDeleteBtn = document.getElementById('cancelDeleteBtn');
+        let accountIdToDelete = null;
 
-                    if (data.accounts && data.accounts.length > 0) {
-                        accountsList.innerHTML = data.accounts.map(account => {
-                            const balanceClass = account.current_balance >= 0 ? 'text-green-600' : 'text-red-600';
-                            const formattedInitialBalance = new Intl.NumberFormat('es-VE', { style: 'currency', currency: 'VES' }).format(account.initial_balance);
-                            const formattedCurrentBalance = new Intl.NumberFormat('es-VE', { style: 'currency', currency: 'VES' }).format(account.current_balance);
-                            return `
-                                <div class="bg-white p-4 rounded-md shadow-sm border border-gray-200 flex justify-between items-center">
-                                    <div>
-                                        <h3 class="font-semibold text-lg text-gray-800">${account.account_name}</h3>
-                                        <p class="text-sm text-gray-600">Saldo Inicial: ${formattedInitialBalance}</p>
-                                        <p class="text-sm font-bold ${balanceClass}">Saldo Actual: ${formattedCurrentBalance}</p>
-                                    </div>
-                                    <button 
-                                        data-account-id="${account.id}" 
-                                        data-account-name="${account.account_name}"
-                                        class="delete-account-btn ml-4 bg-red-500 text-white px-3 py-1 rounded-md text-sm hover:bg-red-600 transition-colors duration-200"
-                                    >
-                                        Eliminar
-                                    </button>
-                                </div>
-                            `;
-                        }).join('');
+        // Función para cargar y mostrar las cuentas dinámicamente
+        async function loadAccounts() {
+            accountsList.innerHTML = '<p class="text-gray-600 text-center">Cargando cuentas...</p>';
+            accountsFeedback.textContent = '';
 
-                        // Añadir event listeners a los botones de eliminar
-                        document.querySelectorAll('.delete-account-btn').forEach(button => {
-                            button.addEventListener('click', async (e) => {
-                                const accountId = e.target.dataset.accountId;
-                                const accountName = e.target.dataset.accountName;
-                                if (confirm(`¿Estás seguro de que quieres eliminar la cuenta "${accountName}"? Todas las transacciones asociadas a ella también se eliminarán.`)) {
-                                    await deleteAccount(accountId);
-                                }
-                            });
-                        });
-                        console.log('Cliente: Cuentas renderizadas.');
-                    } else {
-                        accountsList.innerHTML = '<p class="text-gray-600 text-center">No hay cuentas registradas para esta empresa. ¡Crea una!</p>';
-                        console.log('Cliente: No hay cuentas, mostrando mensaje "no hay".');
-                    }
-                } else {
-                    const errorData = await response.json();
-                    accountsFeedback.textContent = `Error al cargar cuentas: ${errorData.message || 'Desconocido'}`;
-                    accountsFeedback.className = 'mt-4 text-center text-sm font-medium text-red-600';
-                    accountsList.innerHTML = '<p class="text-red-600 text-center">No se pudieron cargar las cuentas.</p>';
-                    console.error('Cliente: Error en la respuesta del servidor al cargar cuentas:', errorData);
-                }
-            } catch (error) {
-                console.error('Cliente: Error CATCH de red al cargar cuentas:', error);
-                accountsFeedback.textContent = 'Error de red al cargar cuentas.';
-                accountsFeedback.className = 'mt-4 text-center text-sm font-medium text-red-600';
-                accountsList.innerHTML = '<p class="text-red-600 text-center">No se pudieron cargar las cuentas.</p>';
-            }
-        }
+            try {
+                // La API ya obtiene el companyId de la cookie
+                const response = await fetch('/api/accounts/get-by-company');
+                console.log('Cliente: Respuesta de fetch de cuentas recibida. response.ok:', response.ok);
 
-        // Función para eliminar una cuenta
-        async function deleteAccount(accountId) {
-            accountsFeedback.textContent = 'Eliminando cuenta...';
-            accountsFeedback.className = 'mt-4 text-center text-sm font-medium text-blue-600';
-            try {
-                const response = await fetch('/api/accounts/delete', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ accountId: accountId }) // companyId se obtiene en el backend de la cookie
-                });
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Cliente: Datos de cuentas recibidos:', data);
 
-                const data = await response.json();
+                    if (data.accounts && data.accounts.length > 0) {
+                        accountsList.innerHTML = data.accounts.map(account => {
+                            const balanceClass = account.current_balance >= 0 ? 'text-green-600' : 'text-red-600';
+                            const formattedInitialBalance = new Intl.NumberFormat('es-VE', { style: 'currency', currency: 'VES' }).format(account.initial_balance);
+                            const formattedCurrentBalance = new Intl.NumberFormat('es-VE', { style: 'currency', currency: 'VES' }).format(account.current_balance);
+                            return `
+                                <div class="bg-white p-4 rounded-md shadow-sm border border-gray-200 flex justify-between items-center">
+                                    <div>
+                                        <h3 class="font-semibold text-lg text-gray-800">${account.account_name}</h3>
+                                        <p class="text-sm text-gray-600">Saldo Inicial: ${formattedInitialBalance}</p>
+                                        <p class="text-sm font-bold ${balanceClass}">Saldo Actual: ${formattedCurrentBalance}</p>
+                                    </div>
+                                    <button
+                                        data-account-id="${account.id}"
+                                        data-account-name="${account.account_name}"
+                                        class="delete-account-btn ml-4 bg-red-500 text-white px-3 py-1 rounded-md text-sm hover:bg-red-600 transition-colors duration-200"
+                                    >
+                                        Eliminar
+                                    </button>
+                                </div>
+                            `;
+                        }).join('');
 
-                if (response.ok) {
-                    accountsFeedback.textContent = data.message;
-                    accountsFeedback.className = 'mt-4 text-center text-sm font-medium text-green-600';
-                    await loadAccounts(); // Recargar la lista de cuentas
-                } else {
-                    accountsFeedback.textContent = data.message || 'Error al eliminar la cuenta.';
-                    accountsFeedback.className = 'mt-4 text-center text-sm font-medium text-red-600';
-                }
-            } catch (error) {
-                console.error('Error al eliminar cuenta:', error);
-                accountsFeedback.textContent = 'Error de red al eliminar la cuenta.';
-                accountsFeedback.className = 'mt-4 text-center text-sm font-medium text-red-600';
-            }
-        }
+                        // Añadir event listeners a los botones de eliminar
+                        document.querySelectorAll('.delete-account-btn').forEach(button => {
+                            button.addEventListener('click', (e) => {
+                                const accountId = e.target.dataset.accountId;
+                                const accountName = e.target.dataset.accountName;
+                                // Guardar el ID de la cuenta en una variable global
+                                accountIdToDelete = accountId;
+                                // Actualizar el texto del modal
+                                modalText.textContent = `Estás a punto de eliminar la cuenta "${accountName}". Por favor, elige una opción:`;
+                                // Mostrar el modal
+                                modal.classList.remove('hidden');
+                            });
+                        });
+                        console.log('Cliente: Cuentas renderizadas.');
+                    } else {
+                        accountsList.innerHTML = '<p class="text-gray-600 text-center">No hay cuentas registradas para esta empresa. ¡Crea una!</p>';
+                        console.log('Cliente: No hay cuentas, mostrando mensaje "no hay".');
+                    }
+                } else {
+                    const errorData = await response.json();
+                    accountsFeedback.textContent = `Error al cargar cuentas: ${errorData.message || 'Desconocido'}`;
+                    accountsFeedback.className = 'mt-4 text-center text-sm font-medium text-red-600';
+                    accountsList.innerHTML = '<p class="text-red-600 text-center">No se pudieron cargar las cuentas.</p>';
+                    console.error('Cliente: Error en la respuesta del servidor al cargar cuentas:', errorData);
+                }
+            } catch (error) {
+                console.error('Cliente: Error CATCH de red al cargar cuentas:', error);
+                accountsFeedback.textContent = 'Error de red al cargar cuentas.';
+                accountsFeedback.className = 'mt-4 text-center text-sm font-medium text-red-600';
+                accountsList.innerHTML = '<p class="text-red-600 text-center">No se pudieron cargar las cuentas.</p>';
+            }
+        }
 
+        // Función para eliminar una cuenta con la opción de conservar transacciones
+        async function deleteAccount(accountId, deleteTransactions) {
+            // Ocultar el modal y mostrar un mensaje de carga
+            modal.classList.add('hidden');
+            accountsFeedback.textContent = 'Eliminando cuenta...';
+            accountsFeedback.className = 'mt-4 text-center text-sm font-medium text-blue-600';
+            try {
+                const response = await fetch('/api/accounts/delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ accountId, deleteTransactions })
+                });
 
-        // Manejador de envío del formulario de creación de cuenta
-        createAccountForm.addEventListener('submit', async (event) => {
-            event.preventDefault();
+                const data = await response.json();
 
-            const accountName = document.getElementById('accountName').value.trim();
-            const initialBalance = parseFloat(document.getElementById('initialBalance').value);
+                if (response.ok) {
+                    accountsFeedback.textContent = data.message;
+                    accountsFeedback.className = 'mt-4 text-center text-sm font-medium text-green-600';
+                    await loadAccounts(); // Recargar la lista de cuentas
+                } else {
+                    accountsFeedback.textContent = data.message || 'Error al eliminar la cuenta.';
+                    accountsFeedback.className = 'mt-4 text-center text-sm font-medium text-red-600';
+                }
+            } catch (error) {
+                console.error('Error al eliminar cuenta:', error);
+                accountsFeedback.textContent = 'Error de red al eliminar la cuenta.';
+                accountsFeedback.className = 'mt-4 text-center text-sm font-medium text-red-600';
+            }
+        }
 
-            if (!accountName) {
-                createAccountFeedback.textContent = 'El nombre de la cuenta es obligatorio.';
-                createAccountFeedback.className = 'mt-3 text-center text-sm font-medium text-red-600';
-                return;
-            }
-            if (isNaN(initialBalance)) {
-                createAccountFeedback.textContent = 'El saldo inicial debe ser un número válido.';
-                createAccountFeedback.className = 'mt-3 text-center text-sm font-medium text-red-600';
-                return;
-            }
+        // Event listeners para el modal
+        deleteWithTransactionsBtn.addEventListener('click', () => {
+            if (accountIdToDelete) {
+                deleteAccount(accountIdToDelete, true);
+            }
+        });
 
-            try {
-                const response = await fetch('/api/accounts/create', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ accountName, initialBalance }) // companyId se obtiene en el backend de la cookie
-                });
+        keepTransactionsBtn.addEventListener('click', () => {
+            if (accountIdToDelete) {
+                deleteAccount(accountIdToDelete, false);
+            }
+        });
 
-                const data = await response.json();
+        cancelDeleteBtn.addEventListener('click', () => {
+            modal.classList.add('hidden');
+            accountIdToDelete = null; // Limpiar la variable
+        });
 
-                if (response.ok) {
-                    createAccountFeedback.textContent = data.message;
-                    createAccountFeedback.className = 'mt-3 text-center text-sm font-medium text-green-600';
-                    createAccountForm.reset(); // Limpiar el formulario
-                    document.getElementById('initialBalance').value = "0.00"; // Resetear saldo inicial
-                    await loadAccounts(); // Recargar la lista de cuentas
-                } else {
-                    createAccountFeedback.textContent = data.message || 'Error al crear la cuenta.';
-                    createAccountFeedback.className = 'mt-3 text-center text-sm font-medium text-red-600';
-                }
-            } catch (error) {
-                console.error('Error al enviar la solicitud de creación de cuenta:', error);
-                createAccountFeedback.textContent = 'No se pudo conectar al servidor para crear la cuenta.';
-                createAccountFeedback.className = 'mt-3 text-center text-sm font-medium text-red-600';
-            }
-        });
+        // Manejador de envío del formulario de creación de cuenta
+        createAccountForm.addEventListener('submit', async (event) => {
+            event.preventDefault();
 
-        // Cargar cuentas al cargar la página (para el cliente)
-        document.addEventListener('DOMContentLoaded', loadAccounts);
-    </script>
+            const accountName = document.getElementById('accountName').value.trim();
+            const initialBalance = parseFloat(document.getElementById('initialBalance').value);
+
+            if (!accountName) {
+                createAccountFeedback.textContent = 'El nombre de la cuenta es obligatorio.';
+                createAccountFeedback.className = 'mt-3 text-center text-sm font-medium text-red-600';
+                return;
+            }
+            if (isNaN(initialBalance)) {
+                createAccountFeedback.textContent = 'El saldo inicial debe ser un número válido.';
+                createAccountFeedback.className = 'mt-3 text-center text-sm font-medium text-red-600';
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/accounts/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ accountName, initialBalance })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    createAccountFeedback.textContent = data.message;
+                    createAccountFeedback.className = 'mt-3 text-center text-sm font-medium text-green-600';
+                    createAccountForm.reset();
+                    document.getElementById('initialBalance').value = "0.00";
+                    await loadAccounts();
+                } else {
+                    createAccountFeedback.textContent = data.message || 'Error al crear la cuenta.';
+                    createAccountFeedback.className = 'mt-3 text-center text-sm font-medium text-red-600';
+                }
+            } catch (error) {
+                console.error('Error al enviar la solicitud de creación de cuenta:', error);
+                createAccountFeedback.textContent = 'No se pudo conectar al servidor para crear la cuenta.';
+                createAccountFeedback.className = 'mt-3 text-center text-sm font-medium text-red-600';
+            }
+        });
+
+        // Cargar cuentas al cargar la página (para el cliente)
+        document.addEventListener('DOMContentLoaded', loadAccounts);
+    </script>
 </body>
 </html>

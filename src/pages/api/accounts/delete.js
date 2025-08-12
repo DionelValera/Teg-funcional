@@ -3,7 +3,7 @@ import { initializeDatabase } from '../../../db/db.js';
 import pkg from 'jsonwebtoken';
 const { verify } = pkg;
 
-const JWT_SECRET = '0402Dionel.*'; 
+const JWT_SECRET = '0402Dionel.*';
 
 export async function POST({ request, cookies }) {
     console.log('API: /accounts/delete - Solicitud POST recibida.');
@@ -52,9 +52,9 @@ export async function POST({ request, cookies }) {
             });
         }
 
-        // 3. Obtener accountId de la solicitud
-        const { accountId } = await request.json();
-        console.log('API: Datos de eliminación de cuenta recibidos:', { accountId });
+        // 3. Obtener accountId y el nuevo flag del body de la solicitud
+        const { accountId, deleteTransactions } = await request.json();
+        console.log('API: Datos de eliminación de cuenta recibidos:', { accountId, deleteTransactions });
 
         if (!accountId) {
             console.log('API: Validación fallida - ID de cuenta faltante.');
@@ -94,20 +94,50 @@ export async function POST({ request, cookies }) {
             });
         }
 
-        // 6. Eliminar la cuenta
-        const result = await db.run(`DELETE FROM accounts WHERE id = ?`, accountId);
-        console.log('API: Resultado de eliminación de cuenta:', result);
-
-        if (result.changes > 0) {
-            return new Response(JSON.stringify({ message: 'Cuenta eliminada exitosamente.' }), {
+        // 6. Manejar la eliminación basada en la opción del usuario
+        if (deleteTransactions) {
+            // Si se pide eliminar las transacciones, se hace una eliminación en cascada (si la FK está configurada)
+            // o se eliminan las transacciones explícitamente y luego la cuenta.
+            // Suponiendo que la FK está en cascada, solo se elimina la cuenta.
+            // Si no está en cascada, se debería añadir un DELETE FROM transactions WHERE account_id = ?
+            await db.run(`DELETE FROM accounts WHERE id = ?`, accountId);
+            console.log('API: Cuenta y transacciones asociadas eliminadas.');
+            return new Response(JSON.stringify({ message: 'Cuenta y transacciones eliminadas exitosamente.' }), {
                 status: 200,
                 headers: { 'Content-Type': 'application/json' },
             });
         } else {
-            return new Response(JSON.stringify({ message: 'La cuenta no pudo ser eliminada.' }), {
-                status: 500,
-                headers: { 'Content-Type': 'application/json' },
-            });
+            // --- ESTE ES EL CÓDIGO PROBLEMÁTICO ---
+            // Probablemente `account_id` en `transactions` tiene una restricción NOT NULL.
+            // No podemos dejarlo en NULL. La solución es reasignar esas transacciones a otra cuenta.
+
+            // 1. **(SUGERENCIA):** Podrías crear una cuenta "sin categoria" o "eliminada" y guardar su ID.
+            //    Vamos a asumir que tienes una constante `UNCATEGORIZED_ACCOUNT_ID` para este propósito.
+            const UNCATEGORIZED_ACCOUNT_ID = 'id-de-cuenta-sin-categoria'; // <- DEBES reemplazar esto
+
+            // 2. Reasignamos las transacciones.
+            const updateResult = await db.run(`UPDATE transactions SET account_id = ? WHERE account_id = ?`,
+                                              UNCATEGORIZED_ACCOUNT_ID,
+                                              accountId);
+
+            console.log(`API: ${updateResult.changes} transacciones reasignadas.`);
+
+            // 3. Eliminamos la cuenta original.
+            const deleteResult = await db.run(`DELETE FROM accounts WHERE id = ?`, accountId);
+
+            if (deleteResult.changes > 0) {
+                console.log('API: Cuenta eliminada, transacciones conservadas.');
+                return new Response(JSON.stringify({ message: 'Cuenta eliminada exitosamente. Las transacciones asociadas han sido conservadas.' }), {
+                    status: 200,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            } else {
+                console.log('API: La cuenta no pudo ser eliminada.');
+                return new Response(JSON.stringify({ message: 'La cuenta no pudo ser eliminada.' }), {
+                    status: 500,
+                    headers: { 'Content-Type': 'application/json' },
+                });
+            }
         }
 
     } catch (error) {

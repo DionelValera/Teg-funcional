@@ -1,24 +1,26 @@
 ---
 // src/pages/dashboard.astro
-import { initializeDatabase } from '../db/db.js'; // Importa la función centralizada
+import { initializeDatabase } from '../db/db.js';
 import pkg from 'jsonwebtoken';
 const { verify } = pkg;
-import HeaderDashboard from '../components/Header-dashboard.astro'; // Importa el nuevo Header del Dashboard
-import Sidebar from '../components/Sidebar.astro'; // Importa el nuevo Sidebar
+import HeaderDashboard from '../components/Header-dashboard.astro';
+import Sidebar from '../components/Sidebar.astro';
 import '../styles/global.css';
 
 // Inicializa la base de datos al cargar la página
 await initializeDatabase().catch(err => console.error("Error al inicializar DB desde dashboard.astro:", err));
 
-const JWT_SECRET = '0402Dionel.*'; 
+const JWT_SECRET = '0402Dionel.*';
 
 let username = 'Usuario';
 let userId = null;
 let activeCompanyId: number | null = null;
 let activeCompanyName: string = 'Sin Empresa';
-let transactions: any[] = []; // Para almacenar las transacciones
-let totalCompanyBalance: number = 0; // Para almacenar el saldo total de la empresa
-let userCompanies: any[] = []; // ¡NUEVO! Para almacenar todas las empresas del usuario
+let transactions: any[] = [];
+let totalCompanyBalance: number = 0;
+let userCompanies: any[] = [];
+// ¡NUEVO! Variable para almacenar el rol del usuario en la empresa activa
+let userRole: string | null = null;
 
 try {
   const token = Astro.cookies.get('auth_token')?.value;
@@ -30,24 +32,23 @@ try {
   const decoded = verify(token, JWT_SECRET);
   if (typeof decoded === 'object' && decoded !== null) {
     username = decoded.username || 'Usuario';
-    userId = decoded.userId; // Captura el userId del token
+    userId = decoded.userId;
   } else {
     console.error("Token decodificado en Dashboard no es un objeto:", decoded);
     return Astro.redirect('/login');
   }
 
-  const db = await initializeDatabase(); 
+  const db = await initializeDatabase();
 
-  // ¡NUEVO! Obtener TODAS las empresas a las que el usuario tiene acceso
+  // Obtener TODAS las empresas a las que el usuario tiene acceso
   userCompanies = await db.all(
       `SELECT c.id, c.company_name, ucr.role
-       FROM companies c
-       JOIN user_company_roles ucr ON c.id = ucr.company_id
-       WHERE ucr.user_id = ?`,
+        FROM companies c
+        JOIN user_company_roles ucr ON c.id = ucr.company_id
+        WHERE ucr.user_id = ?`,
       userId
   );
 
-  // Lógica para determinar la empresa activa
   const activeCompanyCookie = Astro.cookies.get('active_company_id')?.value;
 
   if (activeCompanyCookie) {
@@ -60,13 +61,29 @@ try {
           activeCompanyId = companyInfo.id;
           activeCompanyName = companyInfo.company_name;
 
+          // Obtener el rol del usuario para la empresa activa
+          const userRoleInCompany = await db.get(
+            `SELECT role FROM user_company_roles WHERE user_id = ? AND company_id = ?`,
+            userId,
+            activeCompanyId
+          );
+          if (userRoleInCompany) {
+            userRole = userRoleInCompany.role;
+          }
+
+          // >>>>>>>>>>>> AÑADIMOS AQUÍ LOS MENSAJES DE DEPURACIÓN <<<<<<<<<<<<
+          console.log('DEBUG: userId:', userId);
+          console.log('DEBUG: activeCompanyId:', activeCompanyId);
+          console.log('DEBUG: userRole detectado:', userRole);
+          // >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+
           // Obtener transacciones y saldo total de la empresa desde el API
           const apiResponse = await fetch(`http://localhost:4321/api/transactions/get-by-company`, {
             headers: {
-              'Cookie': `auth_token=${token}; active_company_id=${activeCompanyId}` // Pasamos las cookies explícitamente al API
+              'Cookie': `auth_token=${token}; active_company_id=${activeCompanyId}`
             }
           });
-          
+
           if (apiResponse.ok) {
             const data = await apiResponse.json();
             transactions = data.transactions;
@@ -76,21 +93,18 @@ try {
           } else {
             const errorData = await apiResponse.json();
             console.error('Dashboard Astro: Error al cargar transacciones o saldo:', errorData.message);
-            // Puedes manejar el error mostrando un mensaje al usuario
           }
 
       } else {
           console.warn("Empresa activa en cookie no válida para el usuario. Redirigiendo a /dashboard/companies.");
-          Astro.cookies.set('active_company_id', '', { expires: new Date(0), path: '/' }); // Limpiar cookie inválida
+          Astro.cookies.set('active_company_id', '', { expires: new Date(0), path: '/' });
           return Astro.redirect('/dashboard/companies');
       }
   } else {
-      // Si no hay empresa activa y el usuario tiene empresas, redirigir a la página de empresas
       if (userCompanies.length > 0) {
           console.warn("No hay empresa activa seleccionada. Redirigiendo a /dashboard/companies.");
           return Astro.redirect('/dashboard/companies');
       } else {
-          // Si no tiene empresas, redirigir a la página de empresas para que cree una
           console.warn("El usuario no tiene empresas. Redirigiendo a /dashboard/companies para crear una.");
           return Astro.redirect('/dashboard/companies');
       }
@@ -120,9 +134,8 @@ const getAmountClass = (type: string) => {
     return type === 'ingreso' ? 'text-green-600' : 'text-red-600';
 };
 
-// Formateador de fecha a "dd-mm-AAAA" (¡CORREGIDO!)
+// Formateador de fecha a "dd-mm-AAAA"
 const formatDate = (dateString: string) => {
-    // Asumiendo que dateString siempre viene en formato "AAAA-MM-DD" de la base de datos
     const [year, month, day] = dateString.split('-');
     return `${day}-${month}-${year}`;
 };
@@ -135,31 +148,30 @@ const formatDate = (dateString: string) => {
     <title>Dashboard | Contabilito</title>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
-        /* Estilos para los labels de tipo (Ingreso/Gasto) */
         .type-label {
             display: inline-block;
             padding: 0.25rem 0.75rem;
-            border-radius: 9999px; /* Fully rounded */
-            font-weight: 600; /* Semi-bold */
-            font-size: 0.75rem; /* text-xs */
+            border-radius: 9999px;
+            font-weight: 600;
+            font-size: 0.75rem;
             line-height: 1;
             text-transform: capitalize;
         }
         .type-label.ingreso {
-            background-color: #d1fae5; /* green-100 */
-            color: #065f46; /* green-800 */
+            background-color: #d1fae5;
+            color: #065f46;
         }
         .type-label.gasto {
-            background-color: #fee2e2; /* red-100 */
-            color: #991b1b; /* red-800 */
+            background-color: #fee2e2;
+            color: #991b1b;
         }
     </style>
 </head>
 <body class="font-poppins bg-gray-100 min-h-screen flex flex-col">
-    <HeaderDashboard 
-        activeCompanyId={activeCompanyId} 
-        activeCompanyName={activeCompanyName} 
-        userCompanies={userCompanies} {/* ¡IMPORTANTE! Pasar userCompanies */}
+    <HeaderDashboard
+        activeCompanyId={activeCompanyId}
+        activeCompanyName={activeCompanyName}
+        userCompanies={userCompanies}
     />
 
     <div class="flex flex-grow pt-[60px]">
@@ -186,12 +198,8 @@ const formatDate = (dateString: string) => {
                 <div class="mt-8">
                     <h2 class="text-2xl font-semibold text-gray-800 mb-4 flex items-center justify-between">
                         Transacciones Recientes
-                        <!-- Saldo Disponible Actual a la derecha del label -->
-                        <span class="text-lg font-bold {getBalanceClass(totalCompanyBalance)}">
-                            Saldo Actual: {formatCurrency(totalCompanyBalance)}
-                        </span>
                     </h2>
-                    
+
                     <div class="overflow-x-auto rounded-lg shadow-md">
                         <table class="min-w-full bg-white">
                             <thead class="bg-gray-200 text-gray-700 uppercase text-sm leading-normal">
@@ -202,35 +210,49 @@ const formatDate = (dateString: string) => {
                                     <th class="py-3 px-6 text-left">Cuenta</th>
                                     <th class="py-3 px-6 text-left">Tipo</th>
                                     <th class="py-3 px-6 text-left">Monto</th>
+                                    <!-- Columna para acciones solo si el usuario es el dueño -->
+                                    {userRole === 'owner' && (
+                                        <th class="py-3 px-6 text-center">Acciones</th>
+                                    )}
                                 </tr>
                             </thead>
                             <tbody class="text-gray-600 text-sm font-light">
                                 {transactions.length === 0 ? (
                                     <tr>
-                                        <td colspan="6" class="py-3 px-6 text-center italic text-gray-500">
+                                        <td colspan={userRole === 'owner' ? "7" : "6"} class="py-3 px-6 text-center italic text-gray-500">
                                             No hay transacciones registradas para esta empresa.
                                         </td>
                                     </tr>
                                 ) : (
                                     transactions.map(transaction => (
                                         <tr class="border-b border-gray-200 hover:bg-gray-50">
-                                            {/* Fecha: Usando el formateador de fecha dd-mm-AAAA */}
                                             <td class="py-3 px-6 text-left whitespace-nowrap">{formatDate(transaction.transaction_date)}</td>
-                                            {/* Descripción: Mostrar N/A si está vacío */}
                                             <td class="py-3 px-6 text-left">{transaction.description || 'N/A'}</td>
-                                            {/* Categoría: Mostrar N/A si está vacío */}
                                             <td class="py-3 px-6 text-left">{transaction.category || 'N/A'}</td>
                                             <td class="py-3 px-6 text-left">{transaction.accountName}</td>
-                                            {/* Tipo: Con estilo redondo */}
                                             <td class="py-3 px-6 text-left">
                                                 <span class={`type-label ${transaction.type}`}>
                                                     {transaction.type === 'ingreso' ? 'Ingreso' : 'Gasto'}
                                                 </span>
                                             </td>
-                                            {/* Monto: Con color condicional (verde/rojo) - Aplicación de clase corregida */}
                                             <td class={`py-3 px-6 text-left font-semibold ${getAmountClass(transaction.type)}`}>
                                                 {formatCurrency(transaction.amount)}
                                             </td>
+                                            <!-- Celda con el botón de eliminar, visible solo para el dueño -->
+                                            {userRole === 'owner' && (
+                                                <td class="py-3 px-6 text-center">
+                                                    <button
+                                                        class="delete-transaction-btn text-red-600 hover:text-red-800 transition duration-150"
+                                                        data-transaction-id={transaction.id}
+                                                        data-transaction-amount={transaction.amount}
+                                                        data-transaction-type={transaction.type}
+                                                        data-account-id={transaction.account_id}
+                                                        title="Eliminar Transacción"
+                                                    >
+                                                        <svg class="w-5 h-5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                                    </button>
+                                                </td>
+                                            )}
                                         </tr>
                                     ))
                                 )}
@@ -239,11 +261,10 @@ const formatDate = (dateString: string) => {
                     </div>
                 </div>
 
-                {/* Botón "Añadir Transacción" no flotante, justificado a la derecha */}
                 <div class="mt-8 flex justify-end">
-                    <a 
-                        href="/dashboard/add-transaction" 
-                        class="bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-md shadow-md flex items-center transition duration-300 transform hover:scale-105"
+                    <a
+                        href="/dashboard/add-transaction"
+                        class="bg-blue-700 hover:bg-blue-800 text-white font-bold py-3 px-6 rounded-md shadow-md flex items-center transition duration-300 transform hover:scale-105"
                         title="Añadir Nueva Transacción"
                     >
                         <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
@@ -253,5 +274,51 @@ const formatDate = (dateString: string) => {
             </div>
         </main>
     </div>
+
+    <!-- Script para manejar la eliminación de transacciones -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const deleteButtons = document.querySelectorAll('.delete-transaction-btn');
+
+            deleteButtons.forEach(button => {
+                button.addEventListener('click', async (event) => {
+                    const button = event.currentTarget;
+                    const transactionId = button.dataset.transactionId;
+                    const transactionAmount = parseFloat(button.dataset.transactionAmount);
+                    const transactionType = button.dataset.transactionType;
+                    const accountId = button.dataset.accountId;
+
+                    if (window.confirm('¿Estás seguro de que quieres eliminar esta transacción? Esta acción es irreversible.')) {
+                        try {
+                            const response = await fetch('/api/transactions/delete', {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    // <<-- ¡AQUÍ ESTÁ LA CORRECCIÓN! -->>
+                                    'Cookie': document.cookie
+                                },
+                                body: JSON.stringify({
+                                    transactionId,
+                                    amount: transactionAmount,
+                                    type: transactionType,
+                                    accountId,
+                                })
+                            });
+
+                            if (response.ok) {
+                                console.log('Transacción eliminada exitosamente.');
+                                window.location.reload();
+                            } else {
+                                const errorData = await response.json();
+                                console.error('Error al eliminar la transacción:', errorData.message);
+                            }
+                        } catch (error) {
+                            console.error('Error de red al intentar eliminar la transacción:', error);
+                        }
+                    }
+                });
+            });
+        });
+    </script>
 </body>
 </html>

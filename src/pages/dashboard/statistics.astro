@@ -21,6 +21,9 @@ let userId = null;
 let activeCompanyId: number | null = null;
 let activeCompanyName: string = 'Sin Empresa';
 let userCompanies: any[] = []; // Para pasar a HeaderDashboard
+let netBalance: number = 0;
+let totalIncome: number = 0;
+let totalExpense: number = 0;
 
 try {
   const token = Astro.cookies.get('auth_token')?.value;
@@ -60,6 +63,27 @@ try {
       if (companyInfo) {
           activeCompanyId = companyInfo.id;
           activeCompanyName = companyInfo.company_name;
+          const today = new Date();
+          const startDate = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+          const endDate = new Date(today.getFullYear(), today.getMonth() + 1, 0).toISOString().split('T')[0];
+
+          const apiResponse = await fetch(`http://localhost:4321/api/reports/summary?startDate=${startDate}&endDate=${endDate}`, {
+              headers: {
+                  'Cookie': `auth_token=${token}; active_company_id=${activeCompanyId}` // Pasamos las cookies explícitamente
+              }
+          });
+
+          if (apiResponse.ok) {
+              const data = await apiResponse.json();
+              netBalance = data.netBalance;
+              totalIncome = data.totalIncome;
+              totalExpense = data.totalExpense;
+              console.log('Summary Astro: Datos de resumen cargados:', { netBalance, totalIncome, totalExpense });
+          } else {
+              const errorData = await apiResponse.json();
+              console.error('Summary Astro: Error al cargar datos de resumen:', errorData.message);
+              // Puedes manejar el error mostrando un mensaje al usuario
+          }
       } else {
           // Si la cookie existe pero el ID de empresa no es válido para este usuario, la limpiamos.
           console.warn("Empresa activa en cookie no válida para el usuario o no encontrada en DB. Limpiando cookie.");
@@ -89,6 +113,15 @@ try {
   return Astro.redirect('/login');
 }
 
+// Formateador de moneda
+const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('es-VE', { style: 'currency', currency: 'VES' }).format(amount);
+};
+
+// Clase para el color del saldo (verde/rojo)
+const getBalanceClass = (balance: number) => {
+    return balance >= 0 ? 'text-green-600' : 'text-red-600';
+};
 ---
 <!DOCTYPE html>
 <html lang="es">
@@ -110,7 +143,7 @@ try {
     <div class="flex flex-grow pt-[60px]">
         <Sidebar />
 
-        <main class="flex-grow p-8 ml-48">
+        <main class="flex-grow p-8 ml-58">
             <div class="bg-white rounded-2xl shadow-xl p-8 w-full mx-auto">
                 <h1 class="text-3xl font-extrabold text-gray-900 mb-6 text-center">
                     Estadísticas y Reportes
@@ -153,25 +186,30 @@ try {
                 </div>
 
                 <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div class="lg:col-span-3 bg-blue-50 p-6 rounded-lg shadow-inner text-center">
-                        <h2 class="text-2xl font-semibold text-blue-800 mb-2">Resumen del Periodo</h2>
+                    <div class="lg:col-span-3 bg-gray-50 p-6 rounded-lg shadow-inner text-center">
+                        <!--<h2 class="text-2xl font-semibold text-blue-800 mb-2">Resumen del Periodo</h2>
                         <p class="text-xl font-semibold text-gray-900 mb-2">Empresa Activa Actual: {activeCompanyName || 'Ninguna seleccionada'}</p>
-                        {activeCompanyId && <p class="text-sm text-gray-600">ID: {activeCompanyId}</p>}
+                        {activeCompanyId && <p class="text-sm text-gray-600">ID: {activeCompanyId}</p>}-->
 
-                        <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
-                            <div>
-                                <h3 class="text-lg font-semibold text-gray-700">Saldo Neto</h3>
-                                <p id="netBalance" class="text-3xl font-bold text-gray-900">Cargando...</p>
-                            </div>
-                            <div>
-                                <h3 class="text-lg font-semibold text-gray-700">Total Ingresos</h3>
-                                <p id="totalIncome" class="text-3xl font-bold text-green-600">Cargando...</p>
-                            </div>
-                            <div>
-                                <h3 class="text-lg font-semibold text-gray-700">Total Gastos</h3>
-                                <p id="totalExpense" class="text-3xl font-bold text-red-600">Cargando...</p>
-                            </div>
-                        </div>
+<!--                         <div class="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-4"> -->
+
+                <!-- Tarjetas de Resumen Rápido -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div class="bg-blue-100 p-6 rounded-lg shadow-md text-center">
+                        <h2 class="text-xl font-semibold text-blue-800 mb-2">Saldo Neto del Mes</h2>
+                        <p id="netBalance" class="text-3xl font-bold text-gray-900">Cargando...</p>
+                    </div>
+                    <div class="bg-green-100 p-6 rounded-lg shadow-md text-center">
+                        <h2 class="text-xl font-semibold text-green-800 mb-2">Ingresos del Mes</h2>
+                        <p id="totalIncome" class="text-3xl font-bold text-green-900">Cargando...</p>
+                    </div>
+                    <div class="bg-red-100 p-6 rounded-lg shadow-md text-center">
+                        <h2 class="text-xl font-semibold text-red-800 mb-2">Gastos del Mes</h2>
+                        <p id="totalExpense" class="text-3xl font-bold text-red-900">Cargando...</p>
+                    </div>
+                </div>
+
+<!--                         </div> -->
                     </div>
 
                     <div class="lg:col-span-1 bg-white p-6 rounded-lg shadow-md flex flex-col items-center">
@@ -187,14 +225,6 @@ try {
                         </div>
                         <p id="expenseChartFeedback" class="text-center text-sm text-gray-500 mt-2"></p>
                     </div>
-
-                    <div class="lg:col-span-2 bg-white p-6 rounded-lg shadow-md flex flex-col items-center">
-                        <h3 class="text-xl font-semibold text-gray-800 mb-4 text-center">Evolución del Saldo Neto</h3>
-                        <div class="relative w-full" style="height: 350px;"> <canvas id="netBalanceTrendChart"></canvas>
-                        </div>
-                        <p id="netBalanceChartFeedback" class="text-center text-sm text-gray-500 mt-2"></p>
-                    </div>
-
                     <div class="lg:col-span-1 bg-white p-6 rounded-lg shadow-md">
                         <h3 class="text-xl font-semibold text-gray-800 mb-4 text-center">Top Categorías de Gastos</h3>
                         <div class="overflow-x-auto">
@@ -216,6 +246,14 @@ try {
                         </div>
                         <p id="topCategoriesFeedback" class="text-center text-sm text-gray-500 mt-2"></p>
                     </div>
+                    <div class="lg:col-span-2 bg-white p-6 rounded-lg shadow-md flex flex-col items-center">
+                        <h3 class="text-xl font-semibold text-gray-800 mb-4 text-center">Evolución del Saldo Neto</h3>
+                        <div class="relative w-full" style="height: 350px;"> <canvas id="netBalanceTrendChart"></canvas>
+                        </div>
+                        <p id="netBalanceChartFeedback" class="text-center text-sm text-gray-500 mt-2"></p>
+                    </div>
+
+
                 </div>
             </div>
         </main>
@@ -343,7 +381,7 @@ try {
                     // 1. Resumen General de Periodo
                     if (netBalanceEl) {
                         netBalanceEl.textContent = formatCurrency(data.netBalance);
-                        netBalanceEl.className = `${getBalanceClass(data.netBalance)} text-3xl font-bold mt-1`; // Aplicar clase de color
+                        netBalanceEl.className = `${getBalanceClass(data.netBalance)} text-3xl font-bold mt-1 `; // Aplicar clase de color
                     }
                     if (totalIncomeEl) totalIncomeEl.textContent = formatCurrency(data.totalIncome);
                     if (totalExpenseEl) totalExpenseEl.textContent = formatCurrency(data.totalExpense);

@@ -9,6 +9,7 @@
     "astro": "astro"
   },
   "dependencies": {
+    "@lucide/astro": "^0.536.0",
     "@tailwindcss/vite": "^4.1.11",
     "astro": "^5.11.0",
     "bcrypt": "^6.0.0",
@@ -16,6 +17,7 @@
     "chart.js": "^4.5.0",
     "chartjs": "^0.3.24",
     "jsonwebtoken": "^9.0.2",
+    "lucide": "^0.536.0",
     "nodejs": "^0.0.0",
     "pdfmake": "^0.2.20",
     "sqlite": "^5.1.1",
