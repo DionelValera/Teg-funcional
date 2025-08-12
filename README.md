@@ -8,7 +8,6 @@ Este documento sirve como un registro central de la visión del proyecto, decisi
 
 * **Objetivo Principal:** Crear una aplicación web contable personal/empresarial con gestión de usuarios, empresas y colaboración.
 * **Tecnologías Clave:** Astro (SSR/SSG), SQLite (base de datos), Node.js (endpoints API), Tailwind CSS (estilos), JavaScript (frontend interactivo), Gemini API (sugerencias inteligentes).
-* **Clave Secreta JWT:** `0402Dionel.*` (¡Solo para desarrollo! Cambiar en producción).
 
 ---
 
