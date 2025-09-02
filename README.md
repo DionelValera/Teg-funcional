@@ -50,5 +50,3 @@ Este documento sirve como un registro central de la visión del proyecto, decisi
 
 * Endpoint `POST /api/gemini/suggest-category` para obtener sugerencias de categoría y descripción de transacciones.
 * Integrado en `dashboard.astro` con un campo de texto y botón.
----
-</script>
